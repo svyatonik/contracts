@@ -17,7 +17,7 @@ contract Owned {
 
 // From Registry.sol
 contract MetadataRegistry {
-	event DataChanged(bytes32 indexed name, string indexed key, string plainKey);
+	event DataChanged(bytes32 indexed name, address indexed owner, string indexed key, string plainKey);
 
 	function getData(bytes32 _name, string _key) constant returns (bytes32);
 	function getAddress(bytes32 _name, string _key) constant returns (address);
@@ -98,19 +98,19 @@ contract SimpleRegistry is Owned, MetadataRegistry, OwnerRegistry, ReverseRegist
 	// Data admin functions.
 	function setData(bytes32 _name, string _key, bytes32 _value) only_owner_of(_name) returns (bool success) {
 		entries[_name].data[_key] = _value;
-		DataChanged(_name, _key, _key);
+		DataChanged(_name, msg.sender, _key, _key);
 		return true;
 	}
 
 	function setAddress(bytes32 _name, string _key, address _value) only_owner_of(_name) returns (bool success) {
 		entries[_name].data[_key] = bytes32(_value);
-		DataChanged(_name, _key, _key);
+		DataChanged(_name, msg.sender, _key, _key);
 		return true;
 	}
 
 	function setUint(bytes32 _name, string _key, uint _value) only_owner_of(_name) returns (bool success) {
 		entries[_name].data[_key] = bytes32(_value);
-		DataChanged(_name, _key, _key);
+		DataChanged(_name, msg.sender, _key, _key);
 		return true;
 	}
 

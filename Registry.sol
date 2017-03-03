@@ -16,7 +16,7 @@ contract Owned {
 }
 
 contract MetadataRegistry {
-	event DataChanged(bytes32 indexed name, string indexed key, string plainKey);
+	event DataChanged(bytes32 indexed name, address indexed owner, string indexed key, string plainKey);
 
 	function getData(bytes32 _name, string _key) constant returns (bytes32);
 	function getAddress(bytes32 _name, string _key) constant returns (address);
