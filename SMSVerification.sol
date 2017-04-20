@@ -54,7 +54,7 @@ contract SimpleCertifier is Owned, Certifier {
 
 contract ProofOfSMS is SimpleCertifier {
 
-	modifier when_fee_paid { if (msg.value < fee) return; _; }
+	modifier when_fee_paid { if (msg.value < fee) throw; _; }
 
 	event Requested(address indexed who);
 	event Puzzled(address indexed who, bytes32 puzzle);
