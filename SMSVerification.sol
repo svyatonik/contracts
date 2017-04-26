@@ -61,7 +61,7 @@ contract ProofOfSMS is SimpleCertifier {
 
 	function request() payable when_fee_paid {
 		if (certs[msg.sender].active)
-			return;
+			throw;
 		Requested(msg.sender);
 	}
 
