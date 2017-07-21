@@ -363,6 +363,8 @@ contract Wallet is multisig, multiowned, daylimit {
 		}
 	}
 
+	// INTERNAL METHODS
+
 	function create(uint _value, bytes _code) internal returns (address o_addr) {
 		assembly {
 			o_addr := create(_value, add(_code, 0x20), mload(_code))
@@ -372,7 +374,7 @@ contract Wallet is multisig, multiowned, daylimit {
 
 	// confirm a transaction through just the hash. we use the previous transactions map, m_txs, in order
 	// to determine the body of the transaction from the hash provided.
-	function confirm(bytes32 _h) onlymanyowners(_h) returns (bool o_success) {
+	function confirm(bytes32 _h) onlymanyowners(_h) internal returns (bool o_success) {
 		if (m_txs[_h].to != 0 || m_txs[_h].value != 0 || m_txs[_h].data.length != 0) {
 			address created;
 			if (m_txs[_h].to == 0) {
@@ -387,8 +389,6 @@ contract Wallet is multisig, multiowned, daylimit {
 			return true;
 		}
 	}
-
-	// INTERNAL METHODS
 
 	function clearPending() internal {
 		uint length = m_pendingIndex.length;
