@@ -10,7 +10,7 @@
 // interior is executed.
 // +Version: Parity fork 1.0
 
-pragma solidity ^0.4.7;
+pragma solidity ^0.4.13;
 
 contract multiowned {
 
@@ -172,7 +172,7 @@ contract multiowned {
 		if (pending.ownersDone & ownerIndexBit == 0) {
 			Confirmation(msg.sender, _operation);
 			// ok - check if count is enough to go ahead.
-			if (pending.yetNeeded <= 1) {
+			if (pending.yetNeeded == 1) {
 				// enough confirmations: reset and run interior.
 				delete m_pendingIndex[m_pending[_operation].index];
 				delete m_pending[_operation];
