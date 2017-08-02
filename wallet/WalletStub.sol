@@ -6,6 +6,37 @@
 pragma solidity ^0.4.11;
 
 contract Wallet {
+    modifier only_whitelisted_methods {
+        bytes4 sign;
+
+        assembly {
+            sign := calldataload(0x0)
+        }
+
+        require(
+            (sign == bytes4(sha3("revoke(bytes32)"))) ||
+            (sign == bytes4(sha3("changeOwner(address,address)"))) ||
+            (sign == bytes4(sha3("addOwner(address)"))) ||
+            (sign == bytes4(sha3("removeOwner(address)"))) ||
+            (sign == bytes4(sha3("changeRequirement(uint256)"))) ||
+            (sign == bytes4(sha3("getOwner(uint256)"))) ||
+            (sign == bytes4(sha3("resetSpentToday()"))) ||
+            (sign == bytes4(sha3("execute(address,uint256,bytes)"))) ||
+            (sign == bytes4(sha3("confirm(bytes32)"))) ||
+            (sign == bytes4(sha3("kill(address)"))) ||
+
+            (sign == bytes4(sha3("m_required()"))) ||
+            (sign == bytes4(sha3("m_numOwners()"))) ||
+            (sign == bytes4(sha3("m_dailyLimit()"))) ||
+            (sign == bytes4(sha3("m_spentToday()"))) ||
+            (sign == bytes4(sha3("m_lastDay()"))) ||
+            (sign == bytes4(sha3("m_lastDay()"))) ||
+
+            (sign == 0x0)
+        );
+        _;
+    }
+
     function Wallet(address[] _owners, uint _required, uint _daylimit) {
         // Signature of the Wallet Library's init function
         bytes4 sig = bytes4(sha3("init_wallet(address[],uint256,uint256)"));
@@ -36,7 +67,7 @@ contract Wallet {
 
     // delegate any contract calls to
     // the library
-    function() payable {
+    function() payable only_whitelisted_methods {
         uint size = msg.data.length;
         bytes32 m_data = _malloc(size);
 
@@ -71,7 +102,7 @@ contract Wallet {
     // @returns A pointer to memory which contain the 32 first bytes
     //          of the delegatecall output
     function _call(bytes32 m_data, uint size) private returns(bytes32) {
-        address target = 0x492934308E98b590A626666B703A6dDf2120e85e;
+        address target = 0xb7BfD7D92392255eD682379902681413970be941;
         bytes32 m_result = _malloc(32);
 
         assembly {
