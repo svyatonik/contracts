@@ -6,40 +6,10 @@
 pragma solidity ^0.4.11;
 
 contract Wallet {
-    modifier only_whitelisted_methods {
-        bytes4 sign;
-
-        assembly {
-            sign := calldataload(0x0)
-        }
-
-        require(
-            (sign == bytes4(sha3("revoke(bytes32)"))) ||
-            (sign == bytes4(sha3("changeOwner(address,address)"))) ||
-            (sign == bytes4(sha3("addOwner(address)"))) ||
-            (sign == bytes4(sha3("removeOwner(address)"))) ||
-            (sign == bytes4(sha3("changeRequirement(uint256)"))) ||
-            (sign == bytes4(sha3("getOwner(uint256)"))) ||
-            (sign == bytes4(sha3("resetSpentToday()"))) ||
-            (sign == bytes4(sha3("execute(address,uint256,bytes)"))) ||
-            (sign == bytes4(sha3("confirm(bytes32)"))) ||
-            (sign == bytes4(sha3("kill(address)"))) ||
-
-            (sign == bytes4(sha3("m_required()"))) ||
-            (sign == bytes4(sha3("m_numOwners()"))) ||
-            (sign == bytes4(sha3("m_dailyLimit()"))) ||
-            (sign == bytes4(sha3("m_spentToday()"))) ||
-            (sign == bytes4(sha3("m_lastDay()"))) ||
-            (sign == bytes4(sha3("m_lastDay()"))) ||
-
-            (sign == 0x0)
-        );
-        _;
-    }
-
     function Wallet(address[] _owners, uint _required, uint _daylimit) {
         // Signature of the Wallet Library's init function
-        bytes4 sig = bytes4(sha3("init_wallet(address[],uint256,uint256)"));
+        // bytes4 sig = bytes4(sha3("init_wallet(address[],uint256,uint256)"));
+        bytes4 sig = 0x90ca20e5;
 
         // Compute the size of the call data : arrays has 2
         // 32bytes for offset and length, plus 32bytes per element ;
@@ -67,7 +37,7 @@ contract Wallet {
 
     // delegate any contract calls to
     // the library
-    function() payable only_whitelisted_methods {
+    function() payable {
         uint size = msg.data.length;
         bytes32 m_data = _malloc(size);
 
@@ -102,21 +72,15 @@ contract Wallet {
     // @returns A pointer to memory which contain the 32 first bytes
     //          of the delegatecall output
     function _call(bytes32 m_data, uint size) private returns(bytes32) {
-        address target = 0xb7BfD7D92392255eD682379902681413970be941;
+        address target = 0x3C8e6c5AE8580961cf1828F8eD28c842937D8F99;
         bytes32 m_result = _malloc(32);
+        bool failed;
 
         assembly {
-            let failed := iszero(delegatecall(sub(gas, 10000), target, m_data, size, m_result, 0x20))
-
-            jumpi(exception, failed)
-            jump(exit)
-
-        exception:
-            invalid
-
-        exit:
+            failed := iszero(delegatecall(sub(gas, 10000), target, m_data, size, m_result, 0x20))
         }
 
+        require(!failed);
         return m_result;
     }
 }
