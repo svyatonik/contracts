@@ -334,7 +334,14 @@ contract WalletLibrary is multisig, multiowned, daylimit, creator {
 
 	// constructor - just pass on the owner array to the multiowned and
 	// the limit to daylimit
-	function init_wallet(address[] _owners, uint _required, uint _daylimit) only_uninitialized external {
+	function WalletLibrary() {
+		address[] owners;
+
+		owners.push(address(0x0));
+		init_wallet(owners, 1, 0);
+	}
+
+	function init_wallet(address[] _owners, uint _required, uint _daylimit) only_uninitialized public {
 		init_daylimit(_daylimit);
 		init_multiowned(_owners, _required);
 	}
