@@ -132,11 +132,11 @@ contract multiowned {
 		return address(m_owners[ownerIndex + 1]);
 	}
 
-	function isOwner(address _addr) returns (bool) {
+	function isOwner(address _addr) public returns (bool) {
 		return m_ownerIndex[uint(_addr)] > 0;
 	}
 
-	function hasConfirmed(bytes32 _operation, address _owner) constant returns (bool) {
+	function hasConfirmed(bytes32 _operation, address _owner) external constant returns (bool) {
 		var pending = m_pending[_operation];
 		uint ownerIndex = m_ownerIndex[uint(_owner)];
 
@@ -252,7 +252,7 @@ contract daylimit is multiowned {
 
 	// checks to see if there is at least `_value` left from the daily limit today. if there is, subtracts it and
 	// returns true. otherwise just returns false.
-	function underLimit(uint _value) internal onlyowner returns (bool) {
+	function underLimit(uint _value) onlyowner internal returns (bool) {
 		// reset the spend limit if we're on a different day to last time.
 		if (today() > m_lastDay) {
 			m_spentToday = 0;
@@ -296,7 +296,7 @@ contract multisig {
 	// TODO: document
 	function changeOwner(address _from, address _to) external;
 	function execute(address _to, uint _value, bytes _data) external returns (bytes32 o_hash);
-	function confirm(bytes32 _h) returns (bool o_success);
+	function confirm(bytes32 _h) public returns (bool o_success);
 }
 
 contract creator {
@@ -348,7 +348,7 @@ contract Wallet is multisig, multiowned, daylimit, creator {
 	// If not, goes into multisig process. We provide a hash on return to allow the sender to provide
 	// shortcuts for the other confirmations (allowing them to avoid replicating the _to, _value
 	// and _data arguments). They still get the option of using them if they want, anyways.
-	function execute(address _to, uint _value, bytes _data) external onlyowner returns (bytes32 o_hash) {
+	function execute(address _to, uint _value, bytes _data) onlyowner external returns (bytes32 o_hash) {
 		// first, take the opportunity to check that we're under the daily limit.
 		if ((_data.length == 0 && underLimit(_value)) || m_required == 1) {
 			// yes - just execute the call.
@@ -380,7 +380,7 @@ contract Wallet is multisig, multiowned, daylimit, creator {
 
 	// confirm a transaction through just the hash. we use the previous transactions map, m_txs, in order
 	// to determine the body of the transaction from the hash provided.
-	function confirm(bytes32 _h) onlymanyowners(_h) returns (bool o_success) {
+	function confirm(bytes32 _h) onlymanyowners(_h) public returns (bool o_success) {
 		if (m_txs[_h].to != 0 || m_txs[_h].value != 0 || m_txs[_h].data.length != 0) {
 			address created;
 			if (m_txs[_h].to == 0) {
