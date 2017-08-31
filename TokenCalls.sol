@@ -2,81 +2,81 @@
 //! By ParityTech, 2017.
 //! Released under the Apache Licence 2.
 /**
- * Usage:
-    const tokensBytecode = '0x...';
+ * To use these 2 methods, one must first compile two two contracts
+ * (`TokensBalances` and `Tokens`), and extract the bytecode,
+ * to which the calldata must be encoded and appended
+ * Here is an example of a JS usage:
 
+    const tokensBytecode = '0x...';
     const tokensBalancesBytecode = '0x...';
 
-    const who = [
-    '0x0000000000000000000000000000000000000000'
-    ];
-
+    const who = [ '0x0000000000000000000000000000000000000000' ];
     const tokenRegAddress = '0x5F0281910Af44bFb5fC7e86A404d0304B0e042F1';
     const tokenFrom = 25;
     const tokenCount = 50;
 
-    const tokensCalldata = tokensBytecode + [
-      tokenRegAddress.replace('0x', ''),
-      tokenFrom.toString(16),
-      tokenCount.toString(16)
-    ].map((v) => v.padStart(64, 0)).join('');
+    function encode (types, values) {
+      return api.util.abiEncode(
+        null,
+        types,
+        values
+      ).replace('0x', '');
+    }
+
+    function decode (type, data) {
+      return api.util
+        .abiDecode(
+          [type] ,
+          [
+            '0x',
+            (32).toString(16).padStart(64, 0),
+            data.replace('0x', ''),
+          ].join('')
+        )
+        [0]
+        .map((t) => t.value);
+    }
+
+    const tokensCalldata = encode(
+      ['address', 'uint', 'uint'],
+      [tokenRegAddress, tokenFrom, tokenCount]
+    );
 
     let tokens;
 
     api.eth
-    .call({
-      data: tokensCalldata
-    })
-    .then((result) => {
-      const results = result
-        .replace('0x', '')
-        .match(/.{1,64}/g)
-        .map((str) => '0x' + str);
+      .call({
+        data: tokensBytecode + tokensCalldata
+      })
+      .then((result) => {
+        tokens = decode('address[]', result);
+      })
+      .then(() => {
+        const tokensBalancesCallData = encode(
+          ['address[]', 'address[]'],
+          [who, tokens]
+        );
 
-      tokens = results
-        .slice(1)
-        .filter((address) => !/^(0x)?0*$/.test(address))
-        .map((address) => '0x' + address.slice(-40));
-    })
-    .then(() => {
-      let tokensBalancesCallData = tokensBalancesBytecode;
+        return api.eth.call({ data: tokensBalancesBytecode + tokensBalancesCallData });
+      })
+      .then((result) => {
+        const rawBalances = decode('uint[]', result);
+        const balances = {};
 
-      tokensBalancesCallData += [].concat(
-        (32 * 2).toString(16),
-        (32 * 3 + 32 * who.length).toString(16),
+        who.forEach((address, whoIndex) => {
+          balances[address] = {};
 
-        who.length.toString(16),
-        who.map((address) => address.replace('0x', '')),
+          tokens.forEach((token, tokenIndex) => {
+            const index = whoIndex * tokens.length + tokenIndex;
 
-        tokens.length.toString(16),
-        tokens.map((address) => address.replace('0x', ''))
-      ).map((v) => v.padStart(64, 0)).join('');
-
-      console.log(tokens)
-
-      return api.eth.call({ data: tokensBalancesCallData });
-    })
-    .then((result) => {
-      const results = result
-        .replace('0x', '')
-        .match(/.{1,64}/g)
-        .map((str) => '0x' + str);
-
-      const balances = {};
-
-      who.forEach((address, whoIndex) => {
-        balances[address] = {};
-
-        tokens.forEach((token, tokenIndex) => {
-          const index = 1 + whoIndex * tokens.length + tokenIndex;
-          const balance = parseInt(results[index], 16);
-
-          balances[address][token] = balance;
+            if (rawBalances[index].gt(0)) {
+              balances[address][token] = rawBalances[index].toFormat();
+            }
+          });
         });
-      });
 
-      return balances;
-    });
+        return balances;
+      });
  */
 
 pragma solidity ^0.4.10;
