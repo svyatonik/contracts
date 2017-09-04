@@ -12,8 +12,8 @@
 
     const who = [ '0x0000000000000000000000000000000000000000' ];
     const tokenRegAddress = '0x5F0281910Af44bFb5fC7e86A404d0304B0e042F1';
-    const tokenFrom = 25;
-    const tokenCount = 50;
+    const tokenStart = 25;
+    const tokenLimit = 50;
 
     function encode (types, values) {
       return api.util.abiEncode(
@@ -39,7 +39,7 @@
 
     const tokensCalldata = encode(
       ['address', 'uint', 'uint'],
-      [tokenRegAddress, tokenFrom, tokenCount]
+      [tokenRegAddress, tokenStart, tokenLimit]
     );
 
     let tokens;
@@ -87,17 +87,19 @@ contract TokenReg {
 }
 
 contract Tokens {
-  function Tokens (address tokenRegAddress, uint start, uint max)
+  function Tokens (address tokenRegAddress, uint start, uint limit)
   {
     TokenReg tokenReg = TokenReg(tokenRegAddress);
 
     uint tokensCount = tokenReg.tokenCount();
     uint count;
 
-    if (start + max > tokensCount) {
+    if (tokensCount <= start) {
+      count = 0;
+    } else if (start + limit > tokensCount) {
       count = tokensCount - start;
     } else {
-      count = max;
+      count = limit;
     }
 
     // The size is 32 bytes for each
@@ -131,8 +133,10 @@ contract TokensBalances {
     // value, plus 32 bytes for the count
     uint m_size = 32 * count + 32;
     bytes4 signature = 0x70a08231;
+
     uint[] memory balances;
     uint m_in;
+    uint m_out;
 
     assembly {
       balances := mload(0x40)
@@ -142,17 +146,21 @@ contract TokensBalances {
       m_in := mload(0x40)
       mstore(0x40, add(m_in, 0x24))
       mstore(m_in, signature)
+
+      m_out := balances
     }
+
+    // The data is right after the first 4 signature bytes
+    uint m_in_data = m_in + 4;
 
     for (uint i = 0; i < who.length; i++) {
       for (uint j = 0; j < tokens.length; j++) {
         address w = who[i];
         address t = tokens[j];
-        uint offset = 32 * (1 + i * tokens.length + j);
 
         assembly {
-          let m_out := add(balances, offset)
-          mstore(add(m_in, 0x4), w)
+          m_out := add(m_out, 0x20)
+          mstore(m_in_data, w)
           call(0xffff, t, 0x0, m_in, 0x24, m_out, 0x20)
           pop
         }
