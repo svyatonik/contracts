@@ -94,6 +94,9 @@ contract Tokens {
     uint tokensCount = tokenReg.tokenCount();
     uint count;
 
+    // Prevent uint overflow
+    assert(start + limit > start);
+
     if (tokensCount <= start) {
       count = 0;
     } else if (start + limit > tokensCount) {
