@@ -25,19 +25,15 @@ contract Certifier {
 
 contract MasterCertifier is Owned {
 	function addCertifier(Certifier _who) public only_owner {
-		for (uint i = 0; i < certifiers.length; ++i) {
-			if (certifiers[i] == Certifier(0)) {
-				certifiers[i] = _who;
-				return;
-			}
-		}
 		certifiers.push(_who);
 	}
 
 	function removeCertifier(Certifier _who) public only_owner returns (bool) {
 		for (uint i = 0; i < certifiers.length; ++i) {
 			if (certifiers[i] == _who) {
-				certifiers[i] = Certifier(0);
+                uint lastIndex = certifiers.length - 1;
+                certifiers[i] = certifiers[lastIndex];
+                certifiers.length = lastIndex;
 				return true;
 			}
 		}
