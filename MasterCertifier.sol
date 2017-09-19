@@ -25,6 +25,7 @@ contract Certifier {
 
 contract MasterCertifier is Owned {
 	function addCertifier(Certifier _who) public only_owner {
+        require (_who != Certifier(0));
 		certifiers.push(_who);
 	}
 
@@ -33,6 +34,7 @@ contract MasterCertifier is Owned {
 			if (certifiers[i] == _who) {
                 uint lastIndex = certifiers.length - 1;
                 certifiers[i] = certifiers[lastIndex];
+                delete certifiers[lastIndex];
                 certifiers.length = lastIndex;
 				return true;
 			}
