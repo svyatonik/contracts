@@ -2,28 +2,33 @@
 //! By Gavin Wood, 2017.
 //! Released under the Apache Licence 2.
 
-/// Simply deposit contract. Effectively a single-use 1 of 2, except that one
+pragma solidity ^0.4.17;
+
+/// Simple deposit contract. Effectively a single-use 1 of 2, except that one
 /// (the sender) cannot access the funds until after 6 months.
 contract TimedDeposit {
-	function TimedDeposit(address _sender, address _receiver) {
-		sender = _sender;
+	function TimedDeposit(address _receiver) public {
 		receiver = _receiver;
+		expiry = now + 6 * 30 days;
 	}
 
-	function () { throw; }
+	function () public payable {
+	    require(msg.sender == sender || sender == 0);
+        sender = msg.sender;
+	}
 
 	function refund() public {
 		require(msg.sender == sender);
 		require(now > expiry);
-		this.suicide(sender);
+		selfdestruct(sender);
 	}
 
 	function take() public {
 		require(msg.sender == receiver);
-		this.suicide(receiver);
+		selfdestruct(receiver);
 	}
 
 	address public sender;
 	address public receiver;
-	uint constant public expiry = now + 6 months;
+	uint public expiry;
 }
