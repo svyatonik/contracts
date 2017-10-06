@@ -63,6 +63,7 @@ contract GavCoin {
 		Transfer(msg.sender, _to, _value);
 		accounts[msg.sender].balance -= _value;
 		accounts[_to].balance += _value;
+        return true;
 	}
 	function transferFrom(address _from, address _to, uint256 _value) when_owns(_from, _value) when_has_allowance(_from, msg.sender, _value) returns (bool success) {
 		Transfer(_from, _to, _value);

@@ -15,18 +15,7 @@ contract Certifier {
 
 contract Recorder {
 	function received(address _who, uint _value);
-}
-
-// ECR20 standard token interface
-contract Token {
-	event Transfer(address indexed from, address indexed to, uint256 value);
-	event Approval(address indexed owner, address indexed spender, uint256 value);
-
-	function balanceOf(address _owner) constant returns (uint256 balance);
-	function transfer(address _to, uint256 _value) returns (bool success);
-	function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
-	function approve(address _spender, uint256 _value) returns (bool success);
-	function allowance(address _owner, address _spender) constant returns (uint256 remaining);
+	function done();
 }
 
 // Owner-specific contract interface
@@ -46,109 +35,232 @@ contract Owned {
 	}
 }
 
+// ERC20 standard token interface
+contract Token {
+	event Transfer(address indexed from, address indexed to, uint256 value);
+	event Approval(address indexed owner, address indexed spender, uint256 value);
+
+	function balanceOf(address _owner) constant returns (uint256 balance);
+	function transfer(address _to, uint256 _value) returns (bool success);
+	function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
+	function approve(address _spender, uint256 _value) returns (bool success);
+	function allowance(address _owner, address _spender) constant returns (uint256 remaining);
+}
+
 // BasicCoin, ECR20 tokens that all belong to the owner for sending around
 contract BasicToken is Token {
-	// this is as basic as can be, only the associated balance & allowances
+	// STRUCTS
+
+	// An account; has a balance and an allowance.
 	struct Account {
 		uint balance;
 		mapping (address => uint) allowanceOf;
 	}
 
-	// constructor sets the parameters of execution, _totalSupply is all units
-	function BasicToken(uint _totalSupply) when_no_eth when_non_zero(_totalSupply) {
-		totalSupply = _totalSupply;
-		accounts[msg.sender].balance = totalSupply;
-	}
+	// FIELDS
+	// (STATE)
 
-	// balance of a specific address
-	function balanceOf(address _who) constant returns (uint256) {
-		return accounts[_who].balance;
-	}
+	// All accounts.
+	mapping (address => Account) accounts;
 
-	// transfer
-	function transfer(address _to, uint256 _value) when_no_eth when_owns(msg.sender, _value) returns (bool) {
-		Transfer(msg.sender, _to, _value);
-		accounts[msg.sender].balance -= _value;
-		accounts[_to].balance += _value;
+	// The total number of tokens.
+	uint public totalSupply = 0;
 
-		return true;
-	}
+	// MODIFIERS
 
-	// transfer via allowance
-	function transferFrom(address _from, address _to, uint256 _value) when_no_eth when_owns(_from, _value) when_has_allowance(_from, msg.sender, _value) returns (bool) {
-		Transfer(_from, _to, _value);
-		accounts[_from].allowanceOf[msg.sender] -= _value;
-		accounts[_from].balance -= _value;
-		accounts[_to].balance += _value;
-
-		return true;
-	}
-
-	// approve allowances
-	function approve(address _spender, uint256 _value) when_no_eth returns (bool) {
-		Approval(msg.sender, _spender, _value);
-		accounts[msg.sender].allowanceOf[_spender] += _value;
-
-		return true;
-	}
-
-	// available allowance
-	function allowance(address _owner, address _spender) constant returns (uint256) {
-		return accounts[_owner].allowanceOf[_spender];
-	}
-
-	// no default function, simple contract only, entry-level users
-	function() {
-		throw;
-	}
-
-	// the balance should be available
+	// Throws unless `_owner` owns some `_amount` of tokens.
 	modifier when_owns(address _owner, uint _amount) {
 		if (accounts[_owner].balance < _amount) throw;
 		_;
 	}
 
-	// an allowance should be available
+	// Throws unless `_spender` is permitted to transfer `_amount` from the
+	// account of `_owner`.
 	modifier when_has_allowance(address _owner, address _spender, uint _amount) {
 		if (accounts[_owner].allowanceOf[_spender] < _amount) throw;
 		_;
 	}
 
-	// no ETH should be sent with the transaction
-	modifier when_no_eth {
-		if (msg.value > 0) throw;
-		_;
+	// FUNCTIONS
+
+	// Disable the fallback function.
+	function() { throw; }
+
+	// (CONSTANT)
+
+	// Return the balance of a specific address.
+	function balanceOf(address _who)
+		constant
+		returns (uint256)
+	{
+		return accounts[_who].balance;
 	}
 
-	// a value should be > 0
-	modifier when_non_zero(uint _value) {
-		if (_value == 0) throw;
-		_;
+	// Return the delegated allowance available to spend.
+	function allowance(address _owner, address _spender)
+		constant
+		returns (uint256)
+	{
+		return accounts[_owner].allowanceOf[_spender];
 	}
 
-	// the base, tokens denoted in micros
-	uint constant public base = 1000000;
+	// (MUTATING)
 
-	// available token supply
-	uint public totalSupply;
+	// Transfer tokens between accounts.
+	function transfer(address _to, uint256 _value)
+		when_owns(msg.sender, _value)
+		returns (bool)
+	{
+		accounts[msg.sender].balance -= _value;
+		accounts[_to].balance += _value;
 
-	// storage and mapping of all balances & allowances
-	mapping (address => Account) accounts;
+		Transfer(msg.sender, _to, _value);
+		return true;
+	}
+
+	// Transfer tokens from a delegated account.
+	function transferFrom(address _from, address _to, uint256 _value)
+		when_owns(_from, _value)
+		when_has_allowance(_from, msg.sender, _value)
+		returns (bool)
+	{
+		accounts[_from].allowanceOf[msg.sender] -= _value;
+		accounts[_from].balance -= _value;
+		accounts[_to].balance += _value;
+
+		Transfer(_from, _to, _value);
+		return true;
+	}
+
+	// Approve an amount for a delegate to transfer.
+	function approve(address _spender, uint256 _value)
+		returns (bool)
+	{
+		accounts[msg.sender].allowanceOf[_spender] += _value;
+
+		Approval(msg.sender, _spender, _value);
+		return true;
+	}
 }
 
-contract BasicMintableToken is Owned, BasicToken, Recorder {
+contract BasicMintableToken is BasicToken {
+
+	// The address of the account which is allowed to mint tokens.
+	address minter;
+
+	// Only continue if the sender is the minter.
+	modifier only_minter { if (msg.sender != minter) throw; _; }
+
+	// Tokens have been minted.
 	event Minted(address indexed who, uint value);
 
-	function BasicMintableToken(address _owner) {
-		owner = _owner;
+	// Create the contract, setting the minting account.
+	function BasicMintableToken(address _minter) {
+		minter = _minter;
 	}
 
-	function received(address _who, uint _value) { mint(_who, _value); }
-	function mint(address _who, uint _value) {
+	function setMinter(address _minter) only_minter {
+		minter = _minter;
+	}
+
+	// Credit `_value` tokens to `_who`.
+	function mint(address _who, uint _value) only_minter {
 		accounts[_who].balance += _value;
 		totalSupply += _value;
 		Minted(_who, _value);
 	}
+}
+
+contract EndableMintableToken is BasicToken {
+
+	// The address of the account which is allowed to mint tokens.
+	address minter;
+
+	// Only continue if the sender is the minter.
+	modifier only_minter { if (msg.sender != minter) throw; _; }
+
+	// Only continue if minting has ceased.
+	modifier when_transferable { if (minter != 0) throw; _; }
+
+	// Tokens have been minted.
+	event Minted(address indexed who, uint value);
+
+	// Create the contract, setting the minting account.
+	function EndableMintableToken(address _minter) {
+		minter = _minter;
+	}
+
+	// Cease all minting activities and make the tokens transferable.
+	//
+	// This cannot be reversed.
+	function ceaseMinting() only_minter {
+		minter = 0;
+	}
+
+	// Credit `_value` tokens to `_who`.
+	function mint(address _who, uint _value) only_minter {
+		accounts[_who].balance += _value;
+		totalSupply += _value;
+		Minted(_who, _value);
+	}
+
+	// Transfer tokens between accounts.
+	function transfer(address _to, uint256 _value)
+		when_transferable
+		returns (bool)
+	{
+		return super.transfer(_to, _value);
+	}
+
+	// Transfer tokens from a delegated account.
+	function transferFrom(address _from, address _to, uint256 _value)
+		when_transferable
+		returns (bool)
+	{
+		return super.transferFrom(_from, _to, _value);
+	}
+}
+
+contract ThawableMintableToken is EndableMintableToken {
+
+	// Unix time when frozen tokens may be thawed.
+	uint iceAgeEnds;
+
+	mapping (address => uint) public frozenBalanceOf;
+
+	// Only if we're out of the ice age.
+	modifier only_when_thawable { if (now < iceAgeEnds) throw; _; }
+
+	// Tokens have been minted.
+	event MintedFrozen(address indexed who, uint value);
+
+	// Tokens have been minted.
+	event Thawed(address indexed who, uint value);
+
+	// Create the contract, setting the minting account.
+	function ThawableMintableToken(uint _iceAgeEnds) {
+		iceAgeEnds = _iceAgeEnds;
+	}
+
+	// Credit `_value` frozen tokens to `_who`.
+	function mintFrozen(address _who, uint _value) only_minter {
+		frozenBalanceOf[_who] += _value;
+		totalSupply += _value;
+		MintedFrozen(_who, _value);
+	}
+
+	// Converts all of the sender's frozen tokens into normal tokens if we're
+	// out of the ice age.
+	function thaw() only_when_thawable {
+		Thawed(msg.sender, frozenBalanceOf[msg.sender]);
+		accounts[msg.sender].balance += frozenBalanceOf[msg.sender];
+		frozenBalanceOf[msg.sender] = 0;
+	}
+}
+
+contract BasicMintableReceiverToken is ThawableMintableToken, Recorder {
+	function received(address _who, uint _value) { super.mint(_who, _value); }
+	function done() { super.ceaseMinting(); }
 }
 
 /// Will accept Ether "contributions" and record each both as a log and in a
@@ -231,6 +343,7 @@ contract Receipter {
 
 	/// Kill this contract.
     function kill() only_admin only_after_period {
+		recorder.done();
         suicide(treasury);
     }
 
@@ -324,7 +437,7 @@ contract CertifyingReceipter is SignedReceipter {
     Certifier certifier;
 }
 
-contract FairReceipter is CertifyingReceipter{
+contract FairReceipter is CertifyingReceipter {
     function FairReceipter(
 		address _recorder,
 		address _admin,
@@ -371,7 +484,7 @@ contract FairReceipter is CertifyingReceipter{
         return segmentMaxBuy - record[_who];
     }
 
-    modifier only_under_max(address who) { if (msg.value > maxBuyFor(who)) throw; _; }
+	modifier only_under_max(address who) { if (msg.value > maxBuyFor(who)) throw; _; }
 
     uint constant firstMaxBuy = 1 ether;
     uint constant endSegment = 16;

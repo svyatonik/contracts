@@ -2,6 +2,7 @@
 // Multi-sig, daily-limited account proxy/wallet.
 // @authors:
 // Gav Wood <g@ethdev.com>
+// Nicolas Gotchac <nicolas@parity.io>
 // inheritable "property" contract that enables methods to be protected by requiring the acquiescence of either a
 // single, or, crucially, each of a number of, designated owners.
 // usage:
@@ -51,11 +52,16 @@ contract multiowned {
 			_;
 	}
 
+	modifier only_uninitialized {
+		require(m_numOwners == 0);
+		_;
+	}
+
 	// METHODS
 
 	// constructor is given number of sigs required to do protected "onlymanyowners" transactions
 	// as well as the selection of addresses capable of confirming them.
-	function multiowned(address[] _owners, uint _required) {
+	function init_multiowned(address[] _owners, uint _required) only_uninitialized internal {
 		require(_required > 0);
 		require(_owners.length >= _required);
 		m_numOwners = _owners.length;
@@ -132,7 +138,7 @@ contract multiowned {
 		return address(m_owners[ownerIndex + 1]);
 	}
 
-	function isOwner(address _addr) public returns (bool) {
+	function isOwner(address _addr) public constant returns (bool) {
 		return m_ownerIndex[uint(_addr)] > 0;
 	}
 
@@ -235,7 +241,7 @@ contract daylimit is multiowned {
 	// METHODS
 
 	// constructor - stores initial daily limit and records the present day's index.
-	function daylimit(uint _limit) {
+	function init_daylimit(uint _limit) only_uninitialized internal {
 		m_dailyLimit = _limit;
 		m_lastDay = today();
 	}
@@ -313,7 +319,7 @@ contract creator {
 // usage:
 // bytes32 h = Wallet(w).from(oneOwner).execute(to, value, data);
 // Wallet(w).from(anotherOwner).confirm(h);
-contract Wallet is multisig, multiowned, daylimit, creator {
+contract WalletLibrary is multisig, multiowned, daylimit, creator {
 
 	// TYPES
 
@@ -328,8 +334,16 @@ contract Wallet is multisig, multiowned, daylimit, creator {
 
 	// constructor - just pass on the owner array to the multiowned and
 	// the limit to daylimit
-	function Wallet(address[] _owners, uint _required, uint _daylimit)
-			multiowned(_owners, _required) daylimit(_daylimit) {
+	function WalletLibrary() {
+		address[] owners;
+
+		owners.push(address(0x0));
+		init_wallet(owners, 1, 0);
+	}
+
+	function init_wallet(address[] _owners, uint _required, uint _daylimit) only_uninitialized public {
+		init_daylimit(_daylimit);
+		init_multiowned(_owners, _required);
 	}
 
 	// kills the contract sending everything to `_to`.
