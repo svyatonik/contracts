@@ -4,35 +4,12 @@
 
 pragma solidity ^0.4.7;
 
-contract Certifier {
-	event Confirmed(address indexed who);
-	event Revoked(address indexed who);
-	function certified(address _who) constant returns (bool);
-	function getData(address _who, string _field) constant returns (bytes32) {}
-	function getAddress(address _who, string _field) constant returns (address) {}
-	function getUint(address _who, string _field) constant returns (uint) {}
-}
+import "Owned.sol";
+import "Certifier.sol";
 
 contract Recorder {
 	function received(address _who, uint _value);
 	function done();
-}
-
-// Owner-specific contract interface
-contract Owned {
-	event NewOwner(address indexed old, address indexed current);
-
-	modifier only_owner {
-		if (msg.sender != owner) throw;
-		_;
-	}
-
-	address public owner = msg.sender;
-
-	function setOwner(address _new) only_owner {
-		NewOwner(owner, _new);
-		owner = _new;
-	}
 }
 
 // ERC20 standard token interface
