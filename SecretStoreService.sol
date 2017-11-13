@@ -1,0 +1,158 @@
+pragma solidity ^0.4.6;
+
+/// From ValidatorSet.sol
+contract ValidatorSetGetter {
+	/// Get current validator set (last enacted or initial if no changes ever made)
+	function getValidators() public constant returns (address[]);
+}
+
+/// From ValidatorFollower.sol
+contract ValidatorFollower {
+	ValidatorSetGetter validators;
+
+	function ValidatorFollower(address _validators) public {
+		validators = ValidatorSetGetter(_validators);
+	}
+
+	// Extracts the internal validator set.
+	// Requires byzantium changes to work (returndatasize/returndatacopy).
+	function getValidatorsInternal() internal constant returns (address[]) {
+		// signature of getValidators function
+		bytes4 methodSig = 0xb7ab4db5;
+		address addr = validators;
+		uint256 gasToUse = msg.gas - 1000;
+
+		assembly {
+			mstore(0x10, methodSig)
+			let ret := call(gasToUse, addr, 0, 0x10, 4, 0, 0)
+			jumpi(0x02,iszero(ret))
+			returndatacopy(0, 0, returndatasize)
+			return(0, returndatasize)
+		}
+	}
+}
+
+/// Authorities-owned contract.
+contract AuthoritiesOwned is ValidatorFollower {
+	/// Confirmations from authorities.
+	struct Confirmations {
+		uint threshold;
+		mapping (address => bytes32) confirmations;
+		address[] confirmedAutorities;
+	}
+
+	/// Constructor.
+	function AuthoritiesOwned(address validators) ValidatorFollower(validators) internal {}
+
+	/// Recover authority address from signature.
+	function recoverAuthority(bytes32 hash, uint8 v, bytes32 r, bytes32 s) view internal returns (address) {
+		var authority = ecrecover(hash, v, r, s);
+		var authorities = getValidatorsInternal();
+		for (uint i = 0; i < authorities.length; i++) {
+			if (authority == authorities[i]) {
+				return authority;
+			}
+		}
+
+		// the signer is not an authority
+		require(false);
+	}
+
+	/// Check that we have enough confirmations from authorities.
+	function insertConfirmation(Confirmations storage confirmations, address authority, bytes32 confirmation) internal returns (bool) {
+		// check if haven't confirmed before
+		if (confirmations.confirmations[authority].length != 0) {
+			return false;
+		}
+		confirmations.confirmations[authority] = confirmation;
+		confirmations.confirmedAutorities.push(authority);
+
+		// calculate number of nodes that have reported the same confirmation
+		uint confirmationsCount = 1;
+		if (confirmationsCount < confirmations.threshold + 1) {
+			// skip last (new) authority, because we have already counted it in confirmationsCount
+			for (uint i = 0; i < confirmations.confirmedAutorities.length - 1; ++i) {
+				if (confirmations.confirmations[confirmations.confirmedAutorities[i]] == confirmation) {
+					confirmationsCount = confirmationsCount + 1;
+				}
+			}
+		}
+
+		return confirmationsCount >= confirmations.threshold + 1;
+	}
+
+	/// Clear internal confirmations mappings.
+	function clearConfirmations(Confirmations storage confirmations) internal {
+		for (uint i = 0; i < confirmations.confirmedAutorities.length; ++i) {
+			delete confirmations.confirmations[confirmations.confirmedAutorities[i]];
+		}
+	}
+}
+
+/// Server key generation contract. This contract allows to generate SecretStore KeyPairs, which
+/// could be used later to sign messages.
+contract ServerKeyGenerator is AuthoritiesOwned {
+	/// Only pass when fee is paid.
+	modifier whenServerKeyGenerationFeePaid { require (msg.value >= serverKeyGenerationFee); _; }
+	/// Only pass when 'correct' public is passed.
+	modifier validPublicKey(bytes publicKey) { require(publicKey.length == 64); _; }
+
+	/// Constructor.
+	function ServerKeyGenerator(address validators) AuthoritiesOwned(validators) public {}
+
+	/// Generation request.
+	struct ServerKeyGenerationRequest {
+		bool isActive;
+		Confirmations confirmations;
+	}
+
+	/// When sever key generation request is received.
+	event ServerKeyRequested(bytes32 serverKeyId);
+	/// When server key is generated.
+	event ServerKeyGenerated(bytes32 indexed serverKeyId, bytes serverKeyPublic);
+
+	/// Request new server key generation.
+	/// requester_public must be unique public key (only one key can be generated for given public).
+	/// Generated key will be published via ServerKeyGenerated event when available.
+	function generateServerKey(bytes32 serverKeyId, uint threshold) public payable whenServerKeyGenerationFeePaid {
+		var request = serverKeyGenerationRequests[serverKeyId];
+		require(!request.isActive);
+		request.isActive = true;
+		request.confirmations.threshold = threshold;
+		ServerKeyRequested(serverKeyId);
+	}
+
+	/// Called when generation is reported by one of key authorities.
+	function serverKeyGenerated(bytes32 serverKeyId, bytes serverKeyPublic, uint8 v, bytes32 r, bytes32 s) public validPublicKey(serverKeyPublic) {
+		// check if request still active
+		var request = serverKeyGenerationRequests[serverKeyId];
+		if (!request.isActive) {
+			return;
+		}
+
+		// insert confirmation && check if there are enough confirmations
+		var authority = recoverAuthority(keccak256(serverKeyPublic), v, r, s);
+		if (!insertConfirmation(request.confirmations, authority, keccak256(serverKeyPublic))) {
+			return;
+		}
+
+		// clear confirmations
+		clearConfirmations(request.confirmations);
+		delete serverKeyGenerationRequests[serverKeyId];
+
+		// ...and finally fire event
+		ServerKeyGenerated(serverKeyId, serverKeyPublic);
+	}
+
+	/// Server key generation fee. TODO: change to actual value
+	uint public serverKeyGenerationFee = 1 finney;
+
+	/// Pending generation requests.
+	mapping (bytes32 => ServerKeyGenerationRequest) serverKeyGenerationRequests;
+}
+
+/// Secret store service contract.
+contract SecretStoreService is ServerKeyGenerator {
+	/// Constructor.
+	function SecretStoreService(address validators) ServerKeyGenerator(validators) public {}
+}
