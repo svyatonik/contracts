@@ -36,7 +36,7 @@ contract AuthoritiesOwned {
 	/// Check that we have enough confirmations from authorities.
 	function insertConfirmation(Confirmations storage confirmations, address authority, bytes32 confirmation) internal returns (bool) {
 		// check if haven't confirmed before
-		if (confirmations.confirmations[authority].length != 0) {
+		if (confirmations.confirmations[authority] != bytes32(0)) {
 			return false;
 		}
 		confirmations.confirmations[authority] = confirmation;
@@ -75,9 +75,6 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 	/// Only pass when 'correct' public is passed.
 	modifier validPublicKey(bytes publicKey) { require(publicKey.length == 64); _; }
 
-	/// Constructor.
-	function ServerKeyGenerator(address validators) AuthoritiesOwned(validators) public {}
-
 	/// Generation request.
 	struct ServerKeyGenerationRequest {
 		bool isActive;
@@ -85,7 +82,7 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 	}
 
 	/// When sever key generation request is received.
-	event ServerKeyRequested(bytes32 serverKeyId);
+	event ServerKeyRequested(bytes32 indexed serverKeyId, uint indexed threshold);
 	/// When server key is generated.
 	event ServerKeyGenerated(bytes32 indexed serverKeyId, bytes serverKeyPublic);
 
@@ -97,7 +94,7 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 		require(!request.isActive);
 		request.isActive = true;
 		request.confirmations.threshold = threshold;
-		ServerKeyRequested(serverKeyId);
+		ServerKeyRequested(serverKeyId, threshold);
 	}
 
 	/// Called when generation is reported by one of key authorities.
@@ -131,6 +128,4 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 
 /// Secret store service contract.
 contract SecretStoreService is ServerKeyGenerator {
-	/// Constructor.
-	function SecretStoreService(address validators) ServerKeyGenerator(validators) public {}
 }

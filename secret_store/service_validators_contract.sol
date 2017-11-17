@@ -107,7 +107,7 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 	}
 
 	/// When sever key generation request is received.
-	event ServerKeyRequested(bytes32 serverKeyId);
+	event ServerKeyRequested(bytes32 indexed serverKeyId);
 	/// When server key is generated.
 	event ServerKeyGenerated(bytes32 indexed serverKeyId, bytes serverKeyPublic);
 
