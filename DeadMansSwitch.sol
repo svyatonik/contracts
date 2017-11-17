@@ -15,9 +15,9 @@ contract DeadMansSwitch {
 	event Sent(address indexed to, uint value, bytes data);
 	event Received(address indexed from, uint value, bytes data);
 	event Reset();
-	event OwnerChanged(address indexed old, address indexed now);
-	event BackupChanged(address indexed old, address indexed now);
-	event ReclaimPeriodChanged(uint old, uint now);
+	event OwnerChanged(address indexed old, address indexed current);
+	event BackupChanged(address indexed old, address indexed current);
+	event ReclaimPeriodChanged(uint old, uint current);
 
 	function DeadMansSwitch(address _owner, address _backup, uint _reclaimPeriod) public {
 		owner = _owner;

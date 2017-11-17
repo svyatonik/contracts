@@ -8,7 +8,7 @@ import "Owned.sol";
 import "Certifier.sol";
 import "Token.sol";
 
-contract Recorder {
+interface Recorder {
 	function received(address _who, uint _value);
 	function done();
 }
