@@ -72,3 +72,38 @@ theGavCoin.refund(10^15, 50 * 10^6, web3.eth.reporter)  // request a refund of 5
 // Wait for reporter to say transaction is mined.
 +theGavCoin.balanceOf(web3.eth.defaultAccount) // returns 50 * 10^6
 ```
+
+
+### Setting up tests
+If you haven't already, run `npm install`.  
+
+This will install all of the required dependencies to run tests and code coverage.  Eventually, all contracts 
+should move into the `contracts` directory and ideally there would be some organizational structure applied.  Truffle and 
+solidity-coverage expect contracts to be in the `contracts` directory.  
+
+#### Running tests 
+In the project root directory, run `truffle compile && truffle test`.  This will build the contracts in
+the contracts directory.  
+
+*Note*: not all contracts in this project compile -- please move contracts into the
+contracts directory only if they compile.
+
+#### Running tests with code coverage (nix)
+```
+./node_modules/.bin/solidity-coverage
+```
+
+#### Running tests with code coverage (windows)
+ (This requires some recent updates to solidity-coverage to work properly on windows, see https://github.com/sc-forks/solidity-coverage/pull/116)
+
+- Change the `.solcover.js` to include the noRpc setting:
+```
+module.exports = {
+    norpc: true,
+    skipFiles: ['contracts/Migrations.sol'],
+};
+```
+- In the project root directory, run `node_modules\.bin\testrpc-sc --port 8555`
+- In another terminal window, in the project root run `node_modules\.bin\solidity-coverage`
+
+You can let `testrpc-sc` continue to run in the background if you will be running coverage tests repeatedly.
