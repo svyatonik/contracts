@@ -2,6 +2,9 @@ pragma solidity ^0.4.18;
 
 /// Authorities-owned contract.
 contract AuthoritiesOwned {
+	/// Only pass when called by authority.
+	modifier onlyAuthority { require (isAuthority(msg.sender)); _; }
+
 	/// Confirmations from authorities.
 	struct Confirmations {
 		uint threshold;
@@ -14,6 +17,29 @@ contract AuthoritiesOwned {
 		authorities.push(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
 	}
 
+	/// Drain contract, paying equal amount to ech of authorities.
+	function drain() public onlyAuthority {
+		var authorities = getValidatorsInternal();
+		var balance = this.balance;
+		var authorityShare = balance / authorities.length;
+		for (uint i = 0; i < authorities.length - 1; i++) {
+			authorities[i].transfer(authorityShare);
+			balance = balance - authorityShare;
+		}
+		authorities[authorities.length - 1].transfer(balance);
+	}
+
+	/// Is authority?
+	function isAuthority(address authority) internal view returns (bool) {
+		var authorities = getValidatorsInternal();
+		for (uint i = 0; i < authorities.length; i++) {
+			if (authority == authorities[i]) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/// Get validators list.
 	function getValidatorsInternal() view internal returns (address[]) {
 		return authorities;
@@ -22,15 +48,8 @@ contract AuthoritiesOwned {
 	/// Recover authority address from signature.
 	function recoverAuthority(bytes32 hash, uint8 v, bytes32 r, bytes32 s) view internal returns (address) {
 		var authority = ecrecover(hash, v, r, s);
-		var authorities = getValidatorsInternal();
-		for (uint i = 0; i < authorities.length; i++) {
-			if (authority == authorities[i]) {
-				return authority;
-			}
-		}
-
-		// the signer is not an authority
-		require(false);
+		require(isAuthority(authority));
+		return authority;
 	}
 
 	/// Check that we have enough confirmations from authorities.

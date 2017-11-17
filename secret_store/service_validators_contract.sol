@@ -34,6 +34,9 @@ contract ValidatorFollower {
 
 /// Authorities-owned contract.
 contract AuthoritiesOwned is ValidatorFollower {
+	/// Only pass when called by authority.
+	modifier onlyAuthority { require (isAuthority(msg.sender)); _; }
+
 	/// Confirmations from authorities.
 	struct Confirmations {
 		uint threshold;
@@ -44,24 +47,40 @@ contract AuthoritiesOwned is ValidatorFollower {
 	/// Constructor.
 	function AuthoritiesOwned(address validators) ValidatorFollower(validators) internal {}
 
-	/// Recover authority address from signature.
-	function recoverAuthority(bytes32 hash, uint8 v, bytes32 r, bytes32 s) view internal returns (address) {
-		var authority = ecrecover(hash, v, r, s);
+	/// Drain contract, paying equal amount to ech of authorities.
+	function drain() public onlyAuthority {
+		var authorities = getValidatorsInternal();
+		var balance = this.balance;
+		var authorityShare = balance / authorities.length;
+		for (uint i = 0; i < authorities.length - 1; i++) {
+			authorities[i].transfer(authorityShare);
+			balance = balance - authorityShare;
+		}
+		authorities[authorities.length - 1].transfer(balance);
+	}
+
+	/// Is authority?
+	function isAuthority(address authority) internal view returns (bool) {
 		var authorities = getValidatorsInternal();
 		for (uint i = 0; i < authorities.length; i++) {
 			if (authority == authorities[i]) {
-				return authority;
+				return true;
 			}
 		}
+		return false;
+	}
 
-		// the signer is not an authority
-		require(false);
+	/// Recover authority address from signature.
+	function recoverAuthority(bytes32 hash, uint8 v, bytes32 r, bytes32 s) view internal returns (address) {
+		var authority = ecrecover(hash, v, r, s);
+		require(isAuthority(authority));
+		return authority;
 	}
 
 	/// Check that we have enough confirmations from authorities.
 	function insertConfirmation(Confirmations storage confirmations, address authority, bytes32 confirmation) internal returns (bool) {
 		// check if haven't confirmed before
-		if (confirmations.confirmations[authority].length != 0) {
+		if (confirmations.confirmations[authority] != bytes32(0)) {
 			return false;
 		}
 		confirmations.confirmations[authority] = confirmation;
@@ -107,7 +126,7 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 	}
 
 	/// When sever key generation request is received.
-	event ServerKeyRequested(bytes32 indexed serverKeyId);
+	event ServerKeyRequested(bytes32 indexed serverKeyId, uint indexed threshold);
 	/// When server key is generated.
 	event ServerKeyGenerated(bytes32 indexed serverKeyId, bytes serverKeyPublic);
 
@@ -119,7 +138,7 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 		require(!request.isActive);
 		request.isActive = true;
 		request.confirmations.threshold = threshold;
-		ServerKeyRequested(serverKeyId);
+		ServerKeyRequested(serverKeyId, threshold);
 	}
 
 	/// Called when generation is reported by one of key authorities.
