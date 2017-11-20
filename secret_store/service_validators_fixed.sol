@@ -111,8 +111,10 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 	function generateServerKey(bytes32 serverKeyId, uint threshold) public payable whenServerKeyGenerationFeePaid {
 		var request = serverKeyGenerationRequests[serverKeyId];
 		require(!request.isActive);
+		require(threshold + 1 <= getValidatorsInternal().length);
 		request.isActive = true;
 		request.confirmations.threshold = threshold;
+		serverKeyGenerationRequestsKeys.push(serverKeyId);
 		ServerKeyRequested(serverKeyId, threshold);
 	}
 
@@ -133,9 +135,33 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 		// clear confirmations
 		clearConfirmations(request.confirmations);
 		delete serverKeyGenerationRequests[serverKeyId];
+		for (uint i = 0; i < serverKeyGenerationRequestsKeys.length; ++i) {
+			if (serverKeyGenerationRequestsKeys[i] == serverKeyId) {
+				for (uint j = i + 1; j < serverKeyGenerationRequestsKeys.length; ++j) {
+					serverKeyGenerationRequestsKeys[j - 1] = serverKeyGenerationRequestsKeys[j];
+				}
+				delete serverKeyGenerationRequestsKeys[serverKeyGenerationRequestsKeys.length - 1];
+				break;
+			}
+		}
 
 		// ...and finally fire event
 		ServerKeyGenerated(serverKeyId, serverKeyPublic);
+	}
+
+	/// Get count of pending server key generation requests.
+	function serverKeyGenerationRequestsCount() view public returns (uint) {
+		return serverKeyGenerationRequestsKeys.length;
+	}
+
+	/// Get server key generation request with given index.
+	function getServerKeyGenerationRequest(address authority, uint index) view public returns (bytes32, uint, bool) {
+		require(index < serverKeyGenerationRequestsKeys.length);
+		var request = serverKeyGenerationRequests[serverKeyGenerationRequestsKeys[index]];
+		require(request.isActive);
+		return (serverKeyGenerationRequestsKeys[index],
+			request.confirmations.threshold,
+			request.confirmations.confirmations[authority] != bytes32(0));
 	}
 
 	/// Server key generation fee. TODO: change to actual value
@@ -143,6 +169,8 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 
 	/// Pending generation requests.
 	mapping (bytes32 => ServerKeyGenerationRequest) serverKeyGenerationRequests;
+	/// Pending requests keys.
+	bytes32[] serverKeyGenerationRequestsKeys;
 }
 
 /// Secret store service contract.
