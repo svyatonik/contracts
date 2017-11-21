@@ -4,30 +4,39 @@ pragma solidity ^0.4.18;
 contract AuthoritiesOwned {
 	/// Only pass when called by authority.
 	modifier onlyAuthority { require (isAuthority(msg.sender)); _; }
+	/// Only pass when sender have non-zero balance.
+	modifier onlyWithBalance { require (balances[msg.sender] > 0); _; }
 
 	/// Confirmations from authorities.
 	struct Confirmations {
 		uint threshold;
 		mapping (address => bytes32) confirmations;
-		address[] confirmedAutorities;
+		address[] confirmedAuthorities;
 	}
 
 	/// Constructor.
 	function AuthoritiesOwned() internal {
+		// change to actual authorities before deployment
 		authorities.push(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
 	}
 
-	/// Drain contract, paying equal amount to ech of authorities.
-	function drain() public onlyAuthority {
-		var authorities = getValidatorsInternal();
-		var balance = this.balance;
-		var authorityShare = balance / authorities.length;
-		for (uint i = 0; i < authorities.length - 1; i++) {
-			authorities[i].transfer(authorityShare);
-			balance = balance - authorityShare;
-		}
-		authorities[authorities.length - 1].transfer(balance);
+	/// Drain balance of sender.
+	function drain() public onlyAuthority onlyWithBalance {
+		var balance = balances[msg.sender];
+		balances[msg.sender] = 0;
+		msg.sender.transfer(balance);
 	}
+
+	/// Pay equal amount of fee to each of authorities.
+	function reinforce(uint amount) internal {
+		var authorityShare = amount / authorities.length;
+		for (uint i = 0; i < authorities.length - 1; i++) {
+			balances[authorities[i]] += authorityShare;
+			amount = amount - authorityShare;
+		}
+		balances[authorities[authorities.length - 1]] += amount;
+	}
+
 
 	/// Is authority?
 	function isAuthority(address authority) internal view returns (bool) {
@@ -45,6 +54,11 @@ contract AuthoritiesOwned {
 		return authorities;
 	}
 
+	/// Get validators count.
+	function getValidatorsCountInternal() view internal returns (uint) {
+		return authorities.length;
+	}
+
 	/// Recover authority address from signature.
 	function recoverAuthority(bytes32 hash, uint8 v, bytes32 r, bytes32 s) view internal returns (address) {
 		var authority = ecrecover(hash, v, r, s);
@@ -59,14 +73,14 @@ contract AuthoritiesOwned {
 			return false;
 		}
 		confirmations.confirmations[authority] = confirmation;
-		confirmations.confirmedAutorities.push(authority);
+		confirmations.confirmedAuthorities.push(authority);
 
 		// calculate number of nodes that have reported the same confirmation
 		uint confirmationsCount = 1;
 		if (confirmationsCount < confirmations.threshold + 1) {
 			// skip last (new) authority, because we have already counted it in confirmationsCount
-			for (uint i = 0; i < confirmations.confirmedAutorities.length - 1; ++i) {
-				if (confirmations.confirmations[confirmations.confirmedAutorities[i]] == confirmation) {
+			for (uint i = 0; i < confirmations.confirmedAuthorities.length - 1; ++i) {
+				if (confirmations.confirmations[confirmations.confirmedAuthorities[i]] == confirmation) {
 					confirmationsCount = confirmationsCount + 1;
 				}
 			}
@@ -77,13 +91,15 @@ contract AuthoritiesOwned {
 
 	/// Clear internal confirmations mappings.
 	function clearConfirmations(Confirmations storage confirmations) internal {
-		for (uint i = 0; i < confirmations.confirmedAutorities.length; ++i) {
-			delete confirmations.confirmations[confirmations.confirmedAutorities[i]];
+		for (uint i = 0; i < confirmations.confirmedAuthorities.length; ++i) {
+			delete confirmations.confirmations[confirmations.confirmedAuthorities[i]];
 		}
 	}
 
 	/// Authorities.
 	address[] authorities;
+	/// Balances of authorities.
+	mapping (address => uint) public balances;
 }
 
 /// Server key generation contract. This contract allows to generate SecretStore KeyPairs, which
@@ -111,7 +127,8 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 	function generateServerKey(bytes32 serverKeyId, uint threshold) public payable whenServerKeyGenerationFeePaid {
 		var request = serverKeyGenerationRequests[serverKeyId];
 		require(!request.isActive);
-		require(threshold + 1 <= getValidatorsInternal().length);
+		require(threshold + 1 <= getValidatorsCountInternal());
+		reinforce(msg.value);
 		request.isActive = true;
 		request.confirmations.threshold = threshold;
 		serverKeyGenerationRequestsKeys.push(serverKeyId);
