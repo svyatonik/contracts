@@ -6,6 +6,13 @@ contract AuthoritiesOwned {
 	modifier onlyAuthority { require (isAuthority(msg.sender)); _; }
 	/// Only pass when sender have non-zero balance.
 	modifier onlyWithBalance { require (balances[msg.sender] > 0); _; }
+	/// Only when non-zero fee is proposed.
+	modifier whenNonZeroFeeIsProposed(uint newFee) { require (newFee != 0); _; }
+	/// Only when _new_ fee is proposed.
+	modifier whenNewFeeIsProposed(uint actualFee, uint newFee) { require (actualFee != newFee); _; }
+	/// Only when _new_ vote is proposed.
+	modifier whenNewVoteIsProposed(FeeVotes storage votes, uint newFee) { require (votes.votes[msg.sender] != newFee); _; }
+
 
 	/// Confirmations from authorities.
 	struct Confirmations {
@@ -14,13 +21,20 @@ contract AuthoritiesOwned {
 		address[] confirmedAuthorities;
 	}
 
-	/// Constructor.
-	function AuthoritiesOwned() internal {
-		// change to actual authorities before deployment
-		authorities.push(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
+	/// Fee votes from authorities.
+	struct FeeVotes {
+		mapping (address => uint) votes;
 	}
 
-	/// Drain balance of sender.
+	/// When balance of authority is deposited by given value (in wei).
+	event Deposit(address indexed authority, uint value);
+
+	/// Constructor.
+	function AuthoritiesOwned() internal {
+		authorities.push(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF); // change to actual authorities before deployment
+	}
+
+	/// Drain balance of sender authority.
 	function drain() public onlyAuthority onlyWithBalance {
 		var balance = balances[msg.sender];
 		balances[msg.sender] = 0;
@@ -28,13 +42,19 @@ contract AuthoritiesOwned {
 	}
 
 	/// Pay equal amount of fee to each of authorities.
-	function reinforce(uint amount) internal {
+	function deposit(uint amount) internal {
 		var authorityShare = amount / authorities.length;
 		for (uint i = 0; i < authorities.length - 1; i++) {
-			balances[authorities[i]] += authorityShare;
+			var authority = authorities[i];
+			balances[authority] += authorityShare;
+			Deposit(authority, authorityShare);
+
 			amount = amount - authorityShare;
 		}
-		balances[authorities[authorities.length - 1]] += amount;
+
+		var lastAuthority = authorities[authorities.length - 1];
+		balances[lastAuthority] += amount;
+		Deposit(lastAuthority, amount);
 	}
 
 
@@ -57,6 +77,24 @@ contract AuthoritiesOwned {
 	/// Get validators count.
 	function getValidatorsCountInternal() view internal returns (uint) {
 		return authorities.length;
+	}
+
+	/// Check if fee voting has finished.
+	function checkFeeVoting(FeeVotes storage votes, uint lastVote) view internal returns (bool) {
+		uint confirmations = 0;
+		var threshold = authorities.length / 2 + 1;
+		for (uint i = 0; i < authorities.length; ++i) {
+			if (votes.votes[authorities[i]] == lastVote) {
+				confirmations += 1;
+				if (confirmations >= threshold) {
+					// majority of authorities have voted for new fee
+					return true;
+				}
+			}
+		}
+
+		// no majority agreement
+		return false;
 	}
 
 	/// Recover authority address from signature.
@@ -108,7 +146,7 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 	/// Only pass when fee is paid.
 	modifier whenServerKeyGenerationFeePaid { require (msg.value >= serverKeyGenerationFee); _; }
 	/// Only pass when 'correct' public is passed.
-	modifier validPublicKey(bytes publicKey) { require(publicKey.length == 64); _; }
+	modifier validPublicKey(bytes publicKey) { require (publicKey.length == 64); _; }
 
 	/// Generation request.
 	struct ServerKeyGenerationRequest {
@@ -116,10 +154,33 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 		Confirmations confirmations;
 	}
 
+	/// When new sever key generation fee value is proposed.
+	event ServerKeyGenerationFeeVote(address indexed author, uint fee);
+	/// When sever key generation fee is changed to new value.
+	event ServerKeyGenerationFeeChanged(uint fee);
 	/// When sever key generation request is received.
 	event ServerKeyRequested(bytes32 indexed serverKeyId, uint indexed threshold);
 	/// When server key is generated.
 	event ServerKeyGenerated(bytes32 indexed serverKeyId, bytes serverKeyPublic);
+
+	/// Vote for server generation fee change proposal.
+	function voteServerKeyGenerationFee(uint fee) public onlyAuthority
+		whenNonZeroFeeIsProposed(fee)
+		whenNewFeeIsProposed(serverKeyGenerationFee, fee)
+		whenNewVoteIsProposed(serverKeyGenerationFeeVotes, fee) {
+		// update vote
+		serverKeyGenerationFeeVotes.votes[msg.sender] = fee;
+		ServerKeyGenerationFeeVote(msg.sender, fee);
+
+		// check if there's majority agreement
+		if (!checkFeeVoting(serverKeyGenerationFeeVotes, fee)) {
+			return;
+		}
+
+		// ...and change actual fee
+		serverKeyGenerationFee = fee;
+		ServerKeyGenerationFeeChanged(fee);
+	}
 
 	/// Request new server key generation.
 	/// requester_public must be unique public key (only one key can be generated for given public).
@@ -128,7 +189,7 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 		var request = serverKeyGenerationRequests[serverKeyId];
 		require(!request.isActive);
 		require(threshold + 1 <= getValidatorsCountInternal());
-		reinforce(msg.value);
+		deposit(msg.value);
 		request.isActive = true;
 		request.confirmations.threshold = threshold;
 		serverKeyGenerationRequestsKeys.push(serverKeyId);
@@ -183,6 +244,9 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 
 	/// Server key generation fee. TODO: change to actual value
 	uint public serverKeyGenerationFee = 1 finney;
+	/// Mapping of authority => fee it supports. When some fee gets majority of votes,
+	/// it becames actual fee.
+	FeeVotes serverKeyGenerationFeeVotes;
 
 	/// Pending generation requests.
 	mapping (bytes32 => ServerKeyGenerationRequest) serverKeyGenerationRequests;
