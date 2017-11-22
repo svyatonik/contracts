@@ -254,7 +254,7 @@ contract('MultiSig Wallet', function(accounts) {
         })
     });
 
-    it.only("should clear the daily limit", function() {
+    it("should clear the daily limit", function() {
       let currentTime;
       let startingBalance;
       return Promise.resolve()
