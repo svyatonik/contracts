@@ -219,6 +219,7 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 					serverKeyGenerationRequestsKeys[j - 1] = serverKeyGenerationRequestsKeys[j];
 				}
 				delete serverKeyGenerationRequestsKeys[serverKeyGenerationRequestsKeys.length - 1];
+				serverKeyGenerationRequestsKeys.length = serverKeyGenerationRequestsKeys.length - 1;
 				break;
 			}
 		}
