@@ -233,14 +233,26 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 		return serverKeyGenerationRequestsKeys.length;
 	}
 
-	/// Get server key generation request with given index.
-	function getServerKeyGenerationRequest(address authority, uint index) view public returns (bytes32, uint, bool) {
+	/// Get server key id request with given index.
+	function getServerKeyId(uint index) view public returns (bytes32) {
 		require(index < serverKeyGenerationRequestsKeys.length);
 		var request = serverKeyGenerationRequests[serverKeyGenerationRequestsKeys[index]];
 		require(request.isActive);
-		return (serverKeyGenerationRequestsKeys[index],
-			request.confirmations.threshold,
-			request.confirmations.confirmations[authority] != bytes32(0));
+		return serverKeyGenerationRequestsKeys[index];
+	}
+
+	/// Get server key generation request with given index.
+	function getServerKeyThreshold(bytes32 serverKeyId) view public returns (uint) {
+		var request = serverKeyGenerationRequests[serverKeyId];
+		require(request.isActive);
+		return request.confirmations.threshold;
+	}
+
+	/// Get server key confirmation status (true - confirmed by address, false otherwise).
+	function getServerKeyConfirmationStatus(bytes32 serverKeyId, address authority) view public returns (bool) {
+		var request = serverKeyGenerationRequests[serverKeyId];
+		require(request.isActive);
+		return request.confirmations.confirmations[authority] != bytes32(0);
 	}
 
 	/// Server key generation fee. TODO: change to actual value
@@ -256,5 +268,4 @@ contract ServerKeyGenerator is AuthoritiesOwned {
 }
 
 /// Secret store service contract.
-contract SecretStoreService is ServerKeyGenerator {
-}
+contract SecretStoreService is ServerKeyGenerator {}
