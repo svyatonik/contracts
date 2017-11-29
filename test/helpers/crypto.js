@@ -19,3 +19,18 @@ export function ethSignWithoutPrefixing(privateKey, messageHashInHex) {
     v: res.recovery + 27
   }
 }
+
+export function multisignWithoutPrefixing(message, privateKeys) {
+  let vs = [];
+  let rs = [];
+  let ss = [];
+
+  privateKeys.forEach(privateKey => {
+    let signature = ethSignWithoutPrefixing(privateKey, message);
+    vs.push(signature.v);
+    rs.push(signature.r);
+    ss.push(signature.s);
+  });
+
+  return [ vs, rs, ss ];
+}

@@ -1,7 +1,7 @@
 const Promise = require("bluebird");
 const PrivateContract = artifacts.require("./PrivateContract.sol");
 
-import {parseSignature, ethSignWithoutPrefixing} from './helpers/crypto';
+import {parseSignature, multisignWithoutPrefixing} from './helpers/crypto';
 import {zeroPadded64Hex} from './helpers/hexManipulation';
 
 contract('Private', function(accounts) {
@@ -34,31 +34,63 @@ contract('Private', function(accounts) {
       .then(_contract => privateContract = _contract)
     );
 
-    it("should allow state change if all the signatures are OK", () => Promise.resolve()
-      .then(() => privateContract.nonce())
+    it("should allow state change if all the signatures are OK", () => Promise
+      .try(() => privateContract.nonce())
       .then(nonceObject => nonceObject.toNumber())
-      .then(nonce => {
-        assert.equal(nonce, 1, "Freshly deployed contract should have its nonce set to 1");
-        let hashableValue = web3.sha3(web3.fromAscii(ExpectedState), {encoding: 'hex'}) + zeroPadded64Hex(nonce);
-        return web3.sha3(hashableValue, {encoding: 'hex'})
-      })
-      .then(newStateHash => {
-        let signature1 = ethSignWithoutPrefixing(validator1.private, newStateHash);
-        let signature2 = ethSignWithoutPrefixing(validator2.private, newStateHash);
-        let signature3 = ethSignWithoutPrefixing(validator3.private, newStateHash);
-        return [
-          [signature1.v, signature2.v, signature3.v],
-          [signature1.r, signature2.r, signature3.r],
-          [signature1.s, signature2.s, signature3.s]
-        ];
-      })
+      .then(nonce => assert.equal(nonce, 1, "Freshly deployed contract should have its nonce set to 1"))
+
+      .then(() => web3.sha3(
+        web3.sha3(web3.fromAscii(ExpectedState), {encoding: 'hex'}) + zeroPadded64Hex(1),
+        {encoding: 'hex'}
+      ))
+      .then(newStateHash => multisignWithoutPrefixing(newStateHash, [validator1.private, validator2.private, validator3.private]))
       .then(([vs, rs, ss]) => privateContract.setState(web3.fromAscii(ExpectedState), vs, rs, ss))
+
       .then(() => privateContract.state())
       .then(state => web3.toAscii(state))
       .then(state => assert.equal(state, ExpectedState, "With all the signatures are in place, the contract state should be updated"))
+
       .then(() => privateContract.nonce())
       .then(nonceObject => nonceObject.toNumber())
       .then(nonce => assert.equal(nonce, 2, "Nonce should be incremented after successfull update"))
+    );
+
+    it("should deny changes if some signatures are missing", () => Promise
+      .try(() => web3.sha3(
+        web3.sha3(web3.fromAscii(ExpectedState), {encoding: 'hex'}) + zeroPadded64Hex(1),
+        {encoding: 'hex'}
+      ))
+      .then(newStateHash => multisignWithoutPrefixing(newStateHash, [validator1.private, validator2.private]))
+      .then(([vs, rs, ss]) => privateContract.setState(web3.fromAscii(ExpectedState), vs, rs, ss))
+      .catch(e => console.log("Transaction rolled back, reason: " + e)) // Won't be necessary when Ganache will support REVERT opcode
+
+      .then(() => privateContract.state())
+      .then(state => web3.toAscii(state))
+      .then(state => assert.equal(state, InitialState, "With only two out of three signatures, the changes are reverted"))
+
+      .then(() => privateContract.nonce())
+      .then(nonceObject => nonceObject.toNumber())
+      .then(nonce => assert.equal(nonce, 1, "Nonce is not increased after a failed attempt"))
+    );
+
+    it("should deny changes in case of a nonce mismatch", () => Promise
+      .try(() => privateContract.nonce())
+      .then(nonceObject => nonceObject.toNumber() + 1)
+      .then(wrongNonce => {
+        let hashableValue = web3.sha3(web3.fromAscii(ExpectedState), {encoding: 'hex'}) + zeroPadded64Hex(wrongNonce);
+        return web3.sha3(hashableValue, {encoding: 'hex'})
+      })
+      .then(newStateHash => multisignWithoutPrefixing(newStateHash, [validator1.private, validator2.private, validator3.private]))
+      .then(([vs, rs, ss]) => privateContract.setState(web3.fromAscii(ExpectedState), vs, rs, ss))
+      .catch(e => console.log("Transaction rolled back, reason: " + e)) // Won't be necessary when Ganache will support REVERT opcode
+
+      .then(() => privateContract.state())
+      .then(state => web3.toAscii(state))
+      .then(state => assert.equal(state, InitialState, "With incorrect nonce, the changes are reverted"))
+
+      .then(() => privateContract.nonce())
+      .then(nonceObject => nonceObject.toNumber())
+      .then(nonce => assert.equal(nonce, 1, "Nonce is not increased after a failed attempt"))
     );
   });
 });
