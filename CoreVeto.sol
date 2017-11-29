@@ -1,16 +1,27 @@
-//sol CoreVeto
-// Asymmetric, dual-sig wallet.
-// @authors:
-// Gav Wood <gavin@parity.io>
-// Two predefined and constant accounts are symbiotic; owner may submit transactions for
-// execution and some pre-defined period later, may have them be executed.
-// Within this period either of the two accounts may cancel the request for
-// some predefined (anti-griefing) value to be paid.
-// Designed to be used with other, more complex, account access infrastructure
-// as a final fail-safe mechanism to ensure the chances of outright theft are
-// minimised.
-// Currently there is no functionality to alter the identities of these two
-// accounts, mainly to reduce complexity and ensure the logic is bug-free.
+//! An asymmetric, dual-signature wallet.
+//!
+//! Two predefined and constant accounts are symbiotic; owner may submit
+//! transactions for execution and some pre-defined period later, may have them
+//! be executed. Within this period either of the two accounts may cancel the
+//! request for some predefined (anti-griefing) value to be paid. Designed to be
+//! used with other, more complex, account access infrastructure as a final
+//! fail-safe mechanism to ensure the chances of outright theft are minimised.
+//! Currently there is no functionality to alter the identities of these two
+//! accounts, mainly to reduce complexity and ensure the logic is bug-free.
+//!
+//! Copyright 2016 Gavin Wood, Parity Technologies Ltd.
+//!
+//! Licensed under the Apache License, Version 2.0 (the "License");
+//! you may not use this file except in compliance with the License.
+//! You may obtain a copy of the License at
+//!
+//!     http://www.apache.org/licenses/LICENSE-2.0
+//!
+//! Unless required by applicable law or agreed to in writing, software
+//! distributed under the License is distributed on an "AS IS" BASIS,
+//! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//! See the License for the specific language governing permissions and
+//! limitations under the License.
 
 pragma solidity ^0.4.17;
 

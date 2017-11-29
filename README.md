@@ -75,18 +75,15 @@ theGavCoin.refund(10^15, 50 * 10^6, web3.eth.reporter)  // request a refund of 5
 
 
 ### Setting up tests
-If you haven't already, run `npm install`.  
+If you haven't already, run `npm install`.
 
-This will install all of the required dependencies to run tests and code coverage.  Eventually, all contracts 
-should move into the `contracts` directory and ideally there would be some organizational structure applied.  Truffle and 
-solidity-coverage expect contracts to be in the `contracts` directory.  
+This will install all of the required dependencies to run tests and code coverage.  Eventually, all contracts
+should move into the `contracts` directory and ideally there would be some organizational structure applied.  Truffle and
+solidity-coverage expect contracts to be in the `contracts` directory.
 
-#### Running tests 
+#### Running tests
 In the project root directory, run `truffle compile && truffle test`.  This will build the contracts in
-the contracts directory.  
-
-*Note*: not all contracts in this project compile -- please move contracts into the
-contracts directory only if they compile.
+the contracts directory.
 
 #### Running tests with code coverage (nix)
 ```

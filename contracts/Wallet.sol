@@ -1,14 +1,29 @@
-//sol Wallet
-// Multi-sig, daily-limited account proxy/wallet.
-// @authors:
-// Gav Wood <g@ethdev.com>
-// inheritable "property" contract that enables methods to be protected by requiring the acquiescence of either a
-// single, or, crucially, each of a number of, designated owners.
-// usage:
-// use modifiers onlyowner (just own owned) or onlymanyowners(hash), whereby the same hash must be provided by
-// some number (specified in constructor) of the set of owners (specified in the constructor, modifiable) before the
-// interior is executed.
-// +Version: Parity fork 1.0
+//! A multi-signature, daily-limited account proxy/wallet.
+//!
+//! Inheritable "property" contract that enables methods to be protected by
+//! requiring the acquiescence of either a single, or, crucially, each of a
+//! number of, designated owners.
+//!
+//! Usage: use modifiers onlyowner (just own owned) or onlymanyowners(hash),
+//! whereby the same hash must be provided by some number (specified in
+//! constructor) of the set of owners (specified in the constructor, modifiable)
+//! before the interior is executed.
+//!
+//! Version: Parity fork 1.0
+//!
+//! Copyright 2016 Gavin Wood, Parity Technologies Ltd.
+//!
+//! Licensed under the Apache License, Version 2.0 (the "License");
+//! you may not use this file except in compliance with the License.
+//! You may obtain a copy of the License at
+//!
+//!     http://www.apache.org/licenses/LICENSE-2.0
+//!
+//! Unless required by applicable law or agreed to in writing, software
+//! distributed under the License is distributed on an "AS IS" BASIS,
+//! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//! See the License for the specific language governing permissions and
+//! limitations under the License.
 
 pragma solidity ^0.4.13;
 
