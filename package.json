@@ -20,15 +20,16 @@
     "babel-preset-stage-2": "^6.18.0",
     "babel-preset-stage-3": "^6.17.0",
     "babel-register": "^6.23.0",
-    "bignumber.js": "^4.1.0",
+    "bignumber.js": "^5.0.0",
     "bluebird": "^3.5.0",
     "concurrently": "^3.5.1",
+    "coveralls": "^3.0.0",
     "ethereumjs-util": "^5.1.2",
     "ganache-cli": "^6.0.3",
     "ganache-core": "^2.0.2",
+    "solidity-coverage": "^0.4.2",
     "solium": "^1.0.8",
-    "truffle": "^4.0.1",
-    "yargs": "^7.0.2"
+    "truffle": "^4.0.1"
   },
   "babel": {
     "presets": [
@@ -37,7 +38,9 @@
   },
   "dependencies": {},
   "scripts": {
+    "ci": "concurrently \"npm run solium\" \"npm run truffle-with-rpc\" \"npm run solidity-coverage\"",
     "ganache": "ganache-cli -p 8547",
+    "solidity-coverage": "solidity-coverage",
     "solium": "solium --dir contracts/",
     "test": "npm run solium && npm run truffle-with-rpc",
     "truffle": "truffle test",

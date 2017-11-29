@@ -1,3 +1,4 @@
 module.exports = {
-    skipFiles: ['contracts/Migrations.sol'],
+    skipFiles: ['Migrations.sol'],
+    port: 8555,
 };

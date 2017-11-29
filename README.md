@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.org/paritytech/contracts.svg?branch=master)](https://travis-ci.org/paritytech/contracts)
+[![Coverage Status](https://coveralls.io/repos/github/paritytech/contracts/badge.svg?branch=master)](https://coveralls.io/github/paritytech/contracts?branch=master)
 
 # contracts
 A bin for all the contracts we do
