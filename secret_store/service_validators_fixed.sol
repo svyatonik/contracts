@@ -1,4 +1,4 @@
-//! The KeyServerSet contract.
+//! The Secret Store service contract. Version for networks with static validators list.
 //!
 //! Copyright 2017 Svyatoslav Nikolsky, Parity Technologies Ltd.
 //!
