@@ -11,7 +11,7 @@ script:
   - |
     status=0
     for file in $(find . -name "*.sol"); do
-      solc --combined-json abi,bin $file > /dev/null
+      solc --allow-paths=. --combined-json abi,bin $file > /dev/null
       if [ $? -ne 0 ]; then status=1; fi
     done
     exit $status
