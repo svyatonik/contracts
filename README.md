@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/paritytech/contracts.svg?branch=master)](https://travis-ci.org/paritytech/contracts)
+[![Coverage Status](https://coveralls.io/repos/github/paritytech/contracts/badge.svg?branch=master)](https://coveralls.io/github/paritytech/contracts?branch=master)
+
 # contracts
 A bin for all the contracts we do
 
@@ -75,15 +78,14 @@ theGavCoin.refund(10^15, 50 * 10^6, web3.eth.reporter)  // request a refund of 5
 
 
 ### Setting up tests
-If you haven't already, run `npm install`.
+If you haven't already, run `sudo npm install -g yarn` and then `yarn`.
 
 This will install all of the required dependencies to run tests and code coverage.  Eventually, all contracts
 should move into the `contracts` directory and ideally there would be some organizational structure applied.  Truffle and
-solidity-coverage expect contracts to be in the `contracts` directory.
+solium expect contracts to be in the `contracts` directory.
 
 #### Running tests
-In the project root directory, run `truffle compile && truffle test`.  This will build the contracts in
-the contracts directory.
+In the project root directory, run `npm test`.  This will lint, build and test the contracts in the contracts directory, running ganache-cli TestRPC instance.
 
 #### Running tests with code coverage (nix)
 ```
