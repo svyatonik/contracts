@@ -8,13 +8,10 @@ module.exports = {
       port: 8547,
       network_id: '*'
     },
-    ropsten: {
-      network_id: 3 // official id of the ropsten network
-    },
     coverage: {
-      host: "localhost",
-      network_id: "*",
+      host: 'localhost',
       port: 8555,
+      network_id: "*",
       gas: 0xfffffffffff,
       gasPrice: 0x01
     }
