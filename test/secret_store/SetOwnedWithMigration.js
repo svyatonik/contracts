@@ -218,7 +218,7 @@ contract('Set', function(accounts) {
     );
 
     it("should not start migration when another migration is in progress", () => Promise
-      .resolve(defaultInitialization(setContract))
+      .resolve(defaultInitializationWithRealAccounts(setContract))
       .then(c => c.addKeyServer(server3.public, server3.ip))
       .then(() => setContract.startMigration(migrationId, {from: server1.address}))
       .then(() => setContract.startMigration(migrationId, {from: server1.address}))
@@ -226,20 +226,20 @@ contract('Set', function(accounts) {
     );
 
     it("should not start migration with invalid migration id", () => Promise
-      .resolve(defaultInitialization(setContract))
+      .resolve(defaultInitializationWithRealAccounts(setContract))
       .then(c => c.addKeyServer(server3.public, server3.ip))
       .then(() => setContract.startMigration(invalidMigrationId, {from: server1.address}))
       .then(() => assert(false, "supposed to fail"), () => {})
     );
 
     it("should not start migration when migration is not required", () => Promise
-      .resolve(defaultInitialization(setContract))
+      .resolve(defaultInitializationWithRealAccounts(setContract))
       .then(() => setContract.startMigration(migrationId, {from: server1.address}))
       .then(() => assert(false, "supposed to fail"), () => {})
     );
 
     it("should not start migration when called by unrelated key server", () => Promise
-      .resolve(defaultInitialization(setContract))
+      .resolve(defaultInitializationWithRealAccounts(setContract))
       .then(c => c.addKeyServer(server3.public, server3.ip))
       .then(() => setContract.startMigration(migrationId, {from: nonKeyServer}))
       .then(() => assert(false, "supposed to fail"), () => {})
