@@ -60,6 +60,10 @@ interface KeyServerSetWithMigration {
 
 	// Get migration id.
 	function getMigrationId() public view returns (bytes32);
+	// Get migration master.
+	function getMigrationMaster() public constant returns (address);
+	// Is migration confirmed by given node?
+	function isMigrationConfirmed(address keyServer) public view returns (bool);
 	// Start migration.
 	function startMigration(bytes32 id) public;
 	// Confirm migration.
