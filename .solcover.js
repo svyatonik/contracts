@@ -1,4 +1,4 @@
 module.exports = {
-    skipFiles: ['Migrations.sol', 'secret_store/interfaces/KeyServerSet.sol'],
+    skipFiles: ['Migrations.sol', 'interfaces'],
     port: 8555,
 };

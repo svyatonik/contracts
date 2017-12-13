@@ -1,7 +1,7 @@
 const Promise = require("bluebird");
-const SetOwnedWithMigration = artifacts.require("./secret_store/OwnedKeyServerSetWithMigration.sol");
+const SetOwnedWithMigration = artifacts.require("./OwnedKeyServerSetWithMigration.sol");
 
-import {recoverPublic} from '../helpers/crypto';
+import {recoverPublic} from './helpers/crypto';
 
 contract('Set', function(accounts) {
   let owner = accounts[0];
