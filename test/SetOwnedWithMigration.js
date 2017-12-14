@@ -8,7 +8,7 @@ contract('Set', function(accounts) {
   let nonOwner = accounts[1];
   let nonKeyServer = accounts[3];
 
-  // We need to know private keys to simulate signing is JS, so I've generated those with `ethkey generate random`
+  // Hardcoded servers for cases when we do not need to sign transactions.
   let server1 = {
     public: '0xd230b17d59a0a3c32e9cdbd55cb64f7d5322f985f854542a7619314364f274cd7984efc0f12d1ad29a0998e936d44e4143c7b8dc0f79ec0580d5b069d1ecacf2',
     private: '0x95698c0184c58f24c3587dda4aedd6ed378729f23fc19f7ca0fde21b3bfe92a2',
@@ -30,11 +30,17 @@ contract('Set', function(accounts) {
 
   let invalidPublic = '0xd5';
   let migrationId = '0x0000000000000000000000000000000000000000000000000000000000000001';
+  let otherMigrationId = '0x0000000000000000000000000000000000000000000000000000000000000002';
   let invalidMigrationId = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
   function defaultInitialization(contract) {
     contract.addKeyServer(server1.public, server1.ip);
     contract.addKeyServer(server2.public, server2.ip);
+
+    // also check that removeKeyServer works in init phase
+    contract.removeKeyServer(server2.address);
+    contract.addKeyServer(server2.public, server2.ip);
+
     contract.completeInitialization();
     return contract;
   }
@@ -55,6 +61,86 @@ contract('Set', function(accounts) {
 
     beforeEach(() => SetOwnedWithMigration.new()
       .then(_contract => setContract = _contract)
+    );
+
+    it("should return public from current set", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(c => c.getCurrentKeyServerPublic(server1.address))
+      .then(p => assert.equal(server1.public, p))
+    );
+
+    it("should not return public from server not on current set", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(c => c.getCurrentKeyServerPublic(server3.address))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should return address from current set", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(c => c.getCurrentKeyServerAddress(server1.address))
+      .then(p => assert.equal(server1.ip, p))
+    );
+
+    it("should not return address from server not on current set", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(c => c.getCurrentKeyServerAddress(server3.address))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should return public from migration set", () => Promise
+      .resolve(defaultInitializationWithRealAccounts(setContract))
+      .then(c => c.removeKeyServer(server2.address))
+      .then(() => setContract.startMigration(migrationId, {from: server1.address}))
+      .then(() => setContract.getMigrationKeyServerPublic(server1.address))
+      .then(p => assert.equal(server1.public, p))
+    );
+
+    it("should not return public from server not on migration set", () => Promise
+      .resolve(defaultInitializationWithRealAccounts(setContract))
+      .then(c => c.removeKeyServer(server2.address))
+      .then(() => setContract.startMigration(migrationId, {from: server1.address}))
+      .then(() => setContract.getMigrationKeyServerPublic(server3.address))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should return address from migration set", () => Promise
+      .resolve(defaultInitializationWithRealAccounts(setContract))
+      .then(c => c.removeKeyServer(server2.address))
+      .then(() => setContract.startMigration(migrationId, {from: server1.address}))
+      .then(() => setContract.getMigrationKeyServerAddress(server1.address))
+      .then(p => assert.equal(server1.ip, p))
+    );
+
+    it("should not return address from server not on migration set", () => Promise
+      .resolve(defaultInitializationWithRealAccounts(setContract))
+      .then(c => c.removeKeyServer(server2.address))
+      .then(() => setContract.startMigration(migrationId, {from: server1.address}))
+      .then(() => setContract.getMigrationKeyServerAddress(server3.address))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should return public from new set", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(c => c.getNewKeyServerPublic(server1.address))
+      .then(p => assert.equal(server1.public, p))
+    );
+
+    it("should not return public from server not on new set", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(c => c.getNewKeyServerPublic(server3.address))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should return address from new set", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(c => c.getNewKeyServerAddress(server1.address))
+      .then(p => assert.equal(server1.ip, p))
+    );
+
+    it("should not return address from server not on new set", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(c => c.getNewKeyServerAddress(server3.address))
+      .then(() => assert(false, "supposed to fail"), () => {})
     );
 
     it("should not allow to initialize twice", () => Promise
@@ -297,6 +383,37 @@ contract('Set', function(accounts) {
         assert(servers.includes(server2.address));
         assert(servers.includes(server3.address));
       })
+    );
+
+    it("should not accept wrong migrationId in confirmMigration", () => Promise
+      .resolve(defaultInitializationWithRealAccounts(setContract))
+      .then(c => c.addKeyServer(server3.public, server3.ip))
+      .then(() => setContract.startMigration(migrationId, {from: server1.address}))
+      .then(() => setContract.confirmMigration(otherMigrationId, {from: server1.address}))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should fail when checking for migration confirmation from non-participant", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(c => c.isMigrationConfirmed(server3.address))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should fail when trying to migrate to empty set", () => Promise
+      .resolve(defaultInitializationWithRealAccounts(setContract))
+      .then(() => setContract.removeKeyServer(server1.address))
+      .then(() => setContract.removeKeyServer(server2.address))
+      .then(() => setContract.startMigration(migrationId, {from: server1.address}))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should fail when trying to confirm migration twice", () => Promise
+      .resolve(defaultInitializationWithRealAccounts(setContract))
+      .then(c => c.addKeyServer(server3.public, server3.ip))
+      .then(() => setContract.startMigration(migrationId, {from: server1.address}))
+      .then(() => setContract.confirmMigration(migrationId, {from: server1.address}))
+      .then(() => setContract.confirmMigration(migrationId, {from: server1.address}))
+      .then(() => assert(false, "supposed to fail"), () => {})
     );
   });
 });
