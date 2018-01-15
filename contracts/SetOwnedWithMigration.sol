@@ -70,25 +70,25 @@ contract OwnedKeyServerSetWithMigration is Owned, KeyServerSetWithMigration {
 
     // Only run if server is currently on current set.
     modifier isOnCurrentSet(address keyServer) {
-        require(keccak256(currentSet.map[keyServer].ip) != keccak256(""));
+        require(bytes(currentSet.map[keyServer].ip).length != 0);
         _;
     }
 
     // Only run if server is currently on migration set.
     modifier isOnMigrationSet(address keyServer) {
-        require(keccak256(migrationSet.map[keyServer].ip) != keccak256(""));
+        require(bytes(migrationSet.map[keyServer].ip).length != 0);
         _;
     }
 
     // Only run if server is currently on new set.
     modifier isOnNewSet(address keyServer) {
-        require(keccak256(newSet.map[keyServer].ip) != keccak256(""));
+        require(bytes(newSet.map[keyServer].ip).length != 0);
         _;
     }
 
     // Only run if server is currently on new set.
     modifier isNotOnNewSet(address keyServer) {
-        require(keccak256(newSet.map[keyServer].ip) == keccak256(""));
+        require(bytes(newSet.map[keyServer].ip).length == 0);
         _;
     }
 
@@ -119,16 +119,16 @@ contract OwnedKeyServerSetWithMigration is Owned, KeyServerSetWithMigration {
     // Only run when sender is potential participant of migration.
     modifier isPossibleMigrationParticipant {
         require(
-            keccak256(currentSet.map[msg.sender].ip) != keccak256("") ||
-            keccak256(newSet.map[msg.sender].ip) != keccak256(""));
+            bytes(currentSet.map[msg.sender].ip).length != 0 ||
+            bytes(newSet.map[msg.sender].ip).length != 0);
         _;
     }
 
     // Only run when sender is participant of migration.
     modifier isMigrationParticipant(address keyServer) {
         require(
-            keccak256(currentSet.map[keyServer].ip) != keccak256("") ||
-            keccak256(migrationSet.map[keyServer].ip) != keccak256(""));
+            bytes(currentSet.map[keyServer].ip).length != 0 ||
+            bytes(migrationSet.map[keyServer].ip).length != 0);
         _;
     }
 
@@ -297,12 +297,12 @@ contract OwnedKeyServerSetWithMigration is Owned, KeyServerSetWithMigration {
     // Are two sets equal?
     function areEqualSets(Set storage set1, Set storage set2) private view returns (bool) {
         for (uint i = 0; i < set1.list.length; ++i) {
-            if (keccak256(set2.map[set1.list[i]].ip) == keccak256("")) {
+            if (bytes(set2.map[set1.list[i]].ip).length == 0) {
                 return false;
             }
         }
         for (uint j = 0; j < set2.list.length; ++j) {
-            if (keccak256(set1.map[set2.list[j]].ip) == keccak256("")) {
+            if (bytes(set1.map[set2.list[j]].ip).length == 0) {
                 return false;
             }
         }
