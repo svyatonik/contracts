@@ -45,9 +45,6 @@ contract AuthoritiesOwned {
         uint maxConfirmationSupport;
     }
 
-    /// When balance of authority is deposited by given value (in wei).
-    event Deposit(address indexed authority, uint value);
-
     /// Constructor.
     function AuthoritiesOwned(address[] initialAuthorities) internal {
         authorities = initialAuthorities;
@@ -66,14 +63,12 @@ contract AuthoritiesOwned {
         for (uint i = 0; i < authorities.length - 1; i++) {
             address authority = authorities[i];
             balances[authority] += authorityShare;
-            Deposit(authority, authorityShare);
 
             amount = amount - authorityShare;
         }
 
         address lastAuthority = authorities[authorities.length - 1];
         balances[lastAuthority] += amount;
-        Deposit(lastAuthority, amount);
     }
 
     /// Is authority?
@@ -727,9 +722,9 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
     /// When document key retrieval request is received.
     event DocumentKeyPersonalRetrievalRequested(bytes32 serverKeyId, bytes requesterPublic);
     /// When document key common portion is retrieved.
-    event DocumentKeyCommonRetrieved(bytes32 indexed serverKeyId, address indexed requester, bytes commonPoint, bytes encryptedPoint, uint threshold);
+    event DocumentKeyCommonRetrieved(bytes32 indexed serverKeyId, address indexed requester, bytes commonPoint, uint threshold);
     /// When document key personal portion is retrieved.
-    event DocumentKeyPersonalRetrieved(bytes32 indexed serverKeyId, address indexed requester, bytes32 accessKey, bytes shadow);
+    event DocumentKeyPersonalRetrieved(bytes32 indexed serverKeyId, address indexed requester, bytes decryptedSecret, bytes shadow);
     /// When error occurs during document key retrieval.
     event DocumentKeyShadowRetrievalError(bytes32 indexed serverKeyId, address indexed requester);
 
@@ -771,7 +766,7 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
     }
 
     /// Called when common data is reported by one of authorities.
-    function documentKeyCommonRetrieved(bytes32 serverKeyId, address requester, bytes commonPoint, bytes encryptedPoint, uint threshold) public onlyAuthority {
+    function documentKeyCommonRetrieved(bytes32 serverKeyId, address requester, bytes commonPoint, uint threshold) public onlyAuthority {
         // check if request still active
         bytes32 retrievalId = keccak256(serverKeyId, requester);
         DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
@@ -780,7 +775,7 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
         }
 
         // insert confirmation
-        bytes32 thresholdConfirmation = keccak256(commonPoint, encryptedPoint, threshold);
+        bytes32 thresholdConfirmation = keccak256(commonPoint, threshold);
         insertConfirmation(request.thresholdConfirmations, msg.sender, thresholdConfirmation);
 
         // ...and check if there are enough confirmations
@@ -802,11 +797,12 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
         request.threshold = threshold;
 
         // ...and publish common data (also signal 'master' key server to start decryption)
-        DocumentKeyCommonRetrieved(serverKeyId, requester, commonPoint, encryptedPoint, threshold);
+        DocumentKeyCommonRetrieved(serverKeyId, requester, commonPoint, threshold);
+        DocumentKeyPersonalRetrievalRequested(serverKeyId, request.requesterPublic);
     }
 
     /// Called when 'personal' data is reported by one of authorities.
-    function documentKeyPersonalRetrieved(bytes32 serverKeyId, address requester, address[] participants, bytes32 accessKey, bytes shadow) public onlyAuthority {
+    function documentKeyPersonalRetrieved(bytes32 serverKeyId, address requester, address[] participants, bytes decryptedSecret, bytes shadow) public onlyAuthority {
         // check if request still active
         bytes32 retrievalId = keccak256(serverKeyId, requester);
         DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
@@ -829,7 +825,7 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
         require(isParticipant);
 
         // order of participants matter => all reporters must respond with equally-ordered participants array
-        bytes32 retrievalDataId = keccak256(participants, accessKey);
+        bytes32 retrievalDataId = keccak256(participants, decryptedSecret);
         DocumentKeyShadowRetrievalData storage data = request.data[retrievalDataId];
         if (!data.isActive) {
             request.dataKeys.push(retrievalDataId);
@@ -848,10 +844,10 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
         data.reported.push(msg.sender);
 
         // publish personal portion
-        DocumentKeyPersonalRetrieved(serverKeyId, requester, accessKey, shadow);
+        DocumentKeyPersonalRetrieved(serverKeyId, requester, decryptedSecret, shadow);
 
         // check if all participants have responded
-        if (request.threshold + 1 < data.reported.length) {
+        if (request.threshold + 1 != data.reported.length) {
             return;
         }
 
