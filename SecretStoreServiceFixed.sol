@@ -19,18 +19,15 @@ pragma solidity ^0.4.18;
 
 /// Authorities-owned contract.
 contract AuthoritiesOwned {
-    /// Maximal (impossible) threshold value.
-    uint constant internal MAX_THRESHOLD = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-
-    /// Only pass when called by authority.
-    modifier onlyAuthority {
-        require (isAuthority(msg.sender));
+    /// Only pass when fee is paid.
+    modifier whenFeePaid(uint256 amount) {
+        require(msg.value >= amount);
         _;
     }
 
-    /// Only pass when sender have non-zero balance.
-    modifier onlyWithBalance {
-        require (balances[msg.sender] > 0);
+    /// Only pass when 'valid' public is passed.
+    modifier validPublic(bytes publicKey) {
+        require(publicKey.length == 64);
         _;
     }
 
@@ -39,110 +36,90 @@ contract AuthoritiesOwned {
 
     /// Confirmations from authorities.
     struct Confirmations {
-        address[] confirmedAuthorities;
+        /// We only support up to 256 authorities. If bit is set, this means that authority
+        /// has already voted for some confirmation (we do not care about exact confirmation).
+        uint256 confirmedAuthorities;
+        /// Number of confirmed authorities.
+        uint8 confirmedAuthoritiesCount;
+        /// Confirmation => number of supporting authorities mapping
+        mapping (bytes32 => uint8) confirmationsSupport;
+        /// Maximal support of single confirmation.
+        uint8 maxConfirmationSupport;
+        /// All confirmation that are in confirmationsSupport. In ideal world, when all
+        //// authorities are working corretly, there'll be 1 confirmation. Max 256 confirmations.
         bytes32[] confirmations;
-        mapping (bytes32 => uint) confirmationsSupport;
-        uint maxConfirmationSupport;
     }
 
     /// Constructor.
-    function AuthoritiesOwned(address[] initialAuthorities) internal {
-        authorities = initialAuthorities;
+    function AuthoritiesOwned(address[] authorities) internal {
+        // checking for duplicates is the deployer duty
+        require(authorities.length > 0 && authorities.length <= 256);
+        for (uint8 i = 0; i < authorities.length; ++i) {
+            address authority = authorities[i];
+            indexes[authority] = i + 1;
+            addresses.push(authority);
+        }
     }
 
+    /// Require authority index.
+    function requireAuthority(address authority) view internal returns (uint8) {
+        uint8 index = indexes[authority];
+        require(index != 0);
+        return index - 1;
+    } 
+
     /// Drain balance of sender authority.
-    function drain() public onlyAuthority onlyWithBalance {
-        uint balance = balances[msg.sender];
-        balances[msg.sender] = 0;
+    function drain() public {
+        uint8 authorityIndex = requireAuthority(msg.sender);
+        uint256 balance = balances[authorityIndex];
+        require(balance != 0);
+        balances[authorityIndex] = 0;
         msg.sender.transfer(balance);
     }
 
     /// Deposit equal share of amount to each of authorities.
-    function deposit(uint amount) internal {
-        uint authorityShare = amount / authorities.length;
-        for (uint i = 0; i < authorities.length - 1; i++) {
-            address authority = authorities[i];
-            balances[authority] += authorityShare;
-
+    function deposit(uint256 amount) internal {
+        uint256 authorityShare = amount / addresses.length;
+        for (uint256 i = 0; i < addresses.length - 1; i++) {
+            balances[i] += authorityShare;
             amount = amount - authorityShare;
         }
 
-        address lastAuthority = authorities[authorities.length - 1];
-        balances[lastAuthority] += amount;
-    }
-
-    /// Is authority?
-    function isAuthority(address authority) internal view returns (bool) {
-        for (uint i = 0; i < authorities.length; i++) {
-            if (authority == authorities[i]) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// Get authorities.
-    function getAuthoritiesInternal() view public returns (address[]) {
-        return authorities;
-    }
-
-    /// Get authorities count.
-    function getAuthoritiesCountInternal() view internal returns (uint) {
-        return authorities.length;
+        balances[addresses.length - 1] += amount;
     }
 
     /// Check if authority has already voted.
-    function isConfirmedByAuthority(
-        Confirmations storage confirmations,
-        address authority
-    ) view internal returns (bool)
-    {
-        for (uint i = 0; i < confirmations.confirmedAuthorities.length; ++i) {
-            if (confirmations.confirmedAuthorities[i] == authority) {
-                return true;
-            }
-        }
-        return false;
+    function isConfirmedByAuthority(Confirmations storage confirmations, uint8 authorityIndex) view internal returns (bool) {
+        return ((confirmations.confirmedAuthorities & (uint256(1) << authorityIndex)) != 0);
     }
 
     /// Insert authority confirmation.
-    function insertConfirmation(
-        Confirmations storage confirmations,
-        address authority,
-        bytes32 confirmation
-    ) internal
-    {
+    function insertConfirmation(Confirmations storage confirmations, uint8 authorityIndex, uint256 threshold, bytes32 confirmation) internal returns (ConfirmationSupport) {
         // check if authority has already voted
-        if (isConfirmedByAuthority(confirmations, authority)) {
-            return;
+        if (isConfirmedByAuthority(confirmations, authorityIndex)) {
+            return ConfirmationSupport.Unconfirmed;
         }
 
         // insert confirmation
-        uint confirmationSupport = confirmations.confirmationsSupport[confirmation] + 1;
-        confirmations.confirmedAuthorities.push(authority);
+        uint8 confirmationSupport = confirmations.confirmationsSupport[confirmation] + 1;
+        confirmations.confirmedAuthorities |= uint256(1) << authorityIndex;
+        confirmations.confirmedAuthoritiesCount += 1;
         confirmations.confirmationsSupport[confirmation] = confirmationSupport;
         if (confirmationSupport == 1) {
             confirmations.confirmations.push(confirmation);
         }
-        if (confirmationSupport > confirmations.maxConfirmationSupport) {
-            confirmations.maxConfirmationSupport = confirmationSupport;
+        if (confirmationSupport < confirmations.maxConfirmationSupport) {
+            return ConfirmationSupport.Unconfirmed;
         }
-    }
-
-    /// Check if confirmation is supported by enough nodes.
-    function checkConfirmationSupport(
-        Confirmations storage confirmations,
-        bytes32 confirmation,
-        uint threshold
-    ) internal view returns (ConfirmationSupport)
-    {
+        confirmations.maxConfirmationSupport = confirmationSupport;
+  
         // check if passed confirmation has received enough support
-        if (threshold + 1 <= confirmations.confirmationsSupport[confirmation]) {
+        if (threshold + 1 <= confirmationSupport) {
             return ConfirmationSupport.Confirmed;
         }
 
         // check if max confirmation CAN receive enough support
-        uint authoritiesLeft = getAuthoritiesCountInternal() - confirmations.confirmedAuthorities.length;
+        uint256 authoritiesLeft = addresses.length - confirmations.confirmedAuthoritiesCount;
         if (threshold + 1 > confirmations.maxConfirmationSupport + authoritiesLeft) {
             return ConfirmationSupport.Impossible;
         }
@@ -150,195 +127,67 @@ contract AuthoritiesOwned {
         return ConfirmationSupport.Unconfirmed;
     }
 
-    /// Insert and check authority confirmation with threshold.
-    function insertConfirmationWithThreshold(
-        Confirmations storage confirmations,
-        Confirmations storage thresholdConfirmations,
-        uint thresholdThreshold,
-        address authority,
-        uint threshold,
-        bytes32 confirmation
-    ) internal returns (ConfirmationSupport)
-    {
-        // insert threshold confirmation && confirmation itself
-        bytes32 thresholdConfirmation = bytes32(threshold);
-        insertConfirmation(confirmations, authority, confirmation);
-        insertConfirmation(thresholdConfirmations, authority, thresholdConfirmation);
-
-        // we need to agree upon threshold first
-        // => only pass if threshold is confirmed
-        ConfirmationSupport thresholdConfirmationSupport = checkConfirmationSupport(thresholdConfirmations,
-            thresholdConfirmation, thresholdThreshold);
-        if (thresholdConfirmationSupport == ConfirmationSupport.Unconfirmed ||
-            thresholdConfirmationSupport == ConfirmationSupport.Impossible) {
-            return thresholdConfirmationSupport;
-        }
-
-        // check confirmation support
-        return checkConfirmationSupport(confirmations, confirmation, threshold);
-    }
-
     /// Clear internal confirmations mappings.
     function clearConfirmations(Confirmations storage confirmations) internal {
-        for (uint i = 0; i < confirmations.confirmations.length; ++i) {
+        for (uint256 i = 0; i < confirmations.confirmations.length; ++i) {
             delete confirmations.confirmationsSupport[confirmations.confirmations[i]];
         }
-        delete confirmations.confirmations;
-        delete confirmations.confirmedAuthorities;
-        confirmations.maxConfirmationSupport = 0;
     }
 
     /// Remove request id from array.
     function removeRequestKey(bytes32[] storage requests, bytes32 request) internal {
         for (uint i = 0; i < requests.length; ++i) {
             if (requests[i] == request) {
-                for (uint j = i + 1; j < requests.length; ++j) {
-                    requests[j - 1] = requests[j];
-                }
-                delete requests[requests.length - 1];
+                requests[i] = requests[requests.length - 1];
                 requests.length = requests.length - 1;
                 break;
             }
         }
     }
 
-    /// Compute address from public key.
-    function computeAddress(bytes publicKey) internal pure returns (address) {
-        return address(uint(keccak256(publicKey)) & 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
-    }
-
-    /// Authorities.
-    address[] private authorities;
+    /// Authorities indexes.
+    mapping (address => uint8) public indexes;
+    /// Authorities addresses.
+    address[] public addresses;
     /// Balances of authorities.
-    mapping (address => uint) private balances;
+    uint256[] public balances;
 }
 
-
-/// Authorities owned fee manage.
-contract AuthoritiesOwnedFeeManager is AuthoritiesOwned {
-    /// Only pass when fee is paid.
-    modifier whenFeePaid(string id) {
-        Fee storage fee = fees[id];
-        require (fee.value != 0);
-        require (msg.value >= fee.value);
-        _;
-    }
-
-    /// Only when non-zero fee is proposed.
-    modifier whenNonZeroFeeIsProposed(uint newValue) {
-        require (newValue != 0);
-        _;
-    }
-
-    /// Only when _new_ fee is proposed.
-    modifier whenNewFeeIsProposed(string id, uint newValue) {
-        require (fees[id].value != newValue);
-        _;
-    }
-
-    /// Only when _new_ vote is proposed.
-    modifier whenNewVoteIsProposed(string id, uint newValue) {
-        require (fees[id].votes[msg.sender] != newValue);
-        _;
-    }
-
-    /// Single fee.
-    struct Fee {
-        /// Active value.
-        uint value;
-        /// Active votes.
-        mapping (address => uint) votes;
-    }
-
-    /// Get actual fee value.
-    function getFee(string id) view public returns (uint) {
-        Fee storage fee = fees[id];
-        require(fee.value != 0);
-        return fee.value;
-    }
-
-    /// Vote for fee change proposal.
-    function voteFee(string id, uint value) public onlyAuthority
-        whenNonZeroFeeIsProposed(value)
-        whenNewFeeIsProposed(id, value)
-        whenNewVoteIsProposed(id, value)
-    {
-        // update vote
-        Fee storage fee = fees[id];
-        require(fee.value != 0);
-        fee.votes[msg.sender] = value;
-
-        // check if there's majority agreement
-        if (!checkFeeVoting(fee, value)) {
-            return;
-        }
-
-        // ...and change actual fee
-        fee.value = value;
-    }
-
-    /// Register fee.
-    function registerFee(string id, uint value) internal {
-        fees[id].value = value;
-    }
-
-    /// Check if fee voting has finished.
-    function checkFeeVoting(Fee storage fee, uint lastVote) view internal returns (bool) {
-        uint confirmations = 0;
-        address[] memory authorities = getAuthoritiesInternal();
-        uint threshold = authorities.length / 2 + 1;
-        for (uint i = 0; i < authorities.length; ++i) {
-            if (fee.votes[authorities[i]] == lastVote) {
-                confirmations += 1;
-                if (confirmations >= threshold) {
-                    // majority of authorities have voted for new fee
-                    return true;
-                }
-            }
-        }
-
-        // no majority agreement
-        return false;
-    }
-
-    /// All registered fees.
-    mapping (string => Fee) internal fees;
-}
 
 /// Server key generation service contract. This contract allows to generate SecretStore KeyPairs, which
 /// could be used later to sign messages or to link with document keys.
-contract ServerKeyGenerationService is AuthoritiesOwnedFeeManager {
-    /// Server key generation fee id.
-    string constant public SKGFEE = "SKGFEE";
+contract ServerKeyGenerationService is AuthoritiesOwned {
+    /// Server key generation fee.
+    uint256 constant SKG_FEE = 100 finney;
+    /// Maximal number of active server key generation requests. We're limiting this number to avoid
+    /// infinite gas costs of some functions.
+    uint256 constant SKG_MAX_REQUESTS = 16;
 
     /// Server key generation request.
     struct ServerKeyGenerationRequest {
-        bool isActive;
         address author;
-        uint threshold;
+        uint256 threshold;
         Confirmations confirmations;
     }
 
     /// When sever key generation request is received.
-    event ServerKeyGenerationRequested(bytes32 serverKeyId, address author, uint threshold);
+    event ServerKeyGenerationRequested(bytes32 serverKeyId, address author, uint256 threshold);
     /// When server key is generated.
     event ServerKeyGenerated(bytes32 indexed serverKeyId, bytes serverKeyPublic);
     /// When error occurs during server key generation.
     event ServerKeyGenerationError(bytes32 indexed serverKeyId);
 
-    /// Constructor.
-    function ServerKeyGenerationService() public {
-        registerFee(SKGFEE, 1 ether);
-    }
-
     /// Request new server key generation. Generated key will be published via ServerKeyReady event when available.
-    function generateServerKey(bytes32 serverKeyId, uint threshold) public payable whenFeePaid(SKGFEE) {
+    function generateServerKey(bytes32 serverKeyId, uint256 threshold) public payable whenFeePaid(SKG_FEE) {
+        // we can't process requests with invalid threshold
+        require(threshold + 1 <= addresses.length);
+        // check maximum number of requests
+        require(serverKeyGenerationRequestsKeys.length < SKG_MAX_REQUESTS);
+
         ServerKeyGenerationRequest storage request = serverKeyGenerationRequests[serverKeyId];
-        require(!request.isActive);
-        require(threshold + 1 <= getAuthoritiesCountInternal());
+        require(request.author == address(0));
         deposit(msg.value);
 
-        request.isActive = true;
         request.author = msg.sender;
         request.threshold = threshold;
         serverKeyGenerationRequestsKeys.push(serverKeyId);
@@ -347,23 +196,22 @@ contract ServerKeyGenerationService is AuthoritiesOwnedFeeManager {
     }
 
     /// Called when generation/retrieval is reported by one of authorities.
-    function serverKeyGenerated(
-        bytes32 serverKeyId,
-        bytes serverKeyPublic) public onlyAuthority
-    {
+    function serverKeyGenerated(bytes32 serverKeyId, bytes serverKeyPublic) public validPublic(serverKeyPublic) {
+        // check that it is called by authority
+        uint8 authorityIndex = requireAuthority(msg.sender);
+
         // check if request still active
         ServerKeyGenerationRequest storage request = serverKeyGenerationRequests[serverKeyId];
-        if (!request.isActive) {
+        if (request.author == address(0)) {
             return;
         }
 
-        // insert confirmation
+        // insert confirmation (we're waiting for confirmations from all authorities here)
         bytes32 confirmation = keccak256(serverKeyPublic);
-        insertConfirmation(request.confirmations, msg.sender, confirmation);
+        ConfirmationSupport confirmationSupport = insertConfirmation(request.confirmations, authorityIndex,
+            addresses.length - 1, confirmation);
 
         // ...and check if there are enough confirmations
-        ConfirmationSupport confirmationSupport = checkConfirmationSupport(request.confirmations, confirmation,
-            getAuthoritiesCountInternal() - 1);
         if (confirmationSupport == ConfirmationSupport.Unconfirmed) {
             return;
         }
@@ -378,10 +226,13 @@ contract ServerKeyGenerationService is AuthoritiesOwnedFeeManager {
     }
 
     /// Called when error occurs during server key generation/retrieval.
-    function serverKeyGenerationError(bytes32 serverKeyId) public onlyAuthority {
+    function serverKeyGenerationError(bytes32 serverKeyId) public {
+        // check that it is called by authority
+        requireAuthority(msg.sender);
+
         // check if request still active
         ServerKeyGenerationRequest storage request = serverKeyGenerationRequests[serverKeyId];
-        if (!request.isActive) {
+        if (request.author == address(0)) {
             return;
         }
 
@@ -398,11 +249,9 @@ contract ServerKeyGenerationService is AuthoritiesOwnedFeeManager {
 
     /// Get server key generation request with given index.
     /// Returns: (serverKeyId, author, threshold)
-    function getServerKeyGenerationRequest(uint index) view public returns (bytes32, address, uint) {
-        require(index < serverKeyGenerationRequestsKeys.length);
+    function getServerKeyGenerationRequest(uint256 index) view public returns (bytes32, address, uint256) {
         bytes32 serverKeyId = serverKeyGenerationRequestsKeys[index];
         ServerKeyGenerationRequest storage request = serverKeyGenerationRequests[serverKeyId];
-        require(request.isActive);
         return (
             serverKeyId,
             request.author,
@@ -412,15 +261,17 @@ contract ServerKeyGenerationService is AuthoritiesOwnedFeeManager {
 
     /// Get server key generation request confirmation status.
     function getServerKeyGenerationRequestConfirmationStatus(bytes32 serverKeyId, address authority) view public returns (bool) {
+        uint8 authorityIndex = requireAuthority(authority);
         ServerKeyGenerationRequest storage request = serverKeyGenerationRequests[serverKeyId];
-        return request.isActive && !isConfirmedByAuthority(request.confirmations, authority);
+        return !isConfirmedByAuthority(request.confirmations, authorityIndex);
     }
 
     /// Delete server key request.
     function deleteServerKeyGenerationRequest(bytes32 serverKeyId, ServerKeyGenerationRequest storage request) private {
         clearConfirmations(request.confirmations);
-        removeRequestKey(serverKeyGenerationRequestsKeys, serverKeyId);
         delete serverKeyGenerationRequests[serverKeyId];
+
+        removeRequestKey(serverKeyGenerationRequestsKeys, serverKeyId);
     }
 
     /// Pending generation requests.
@@ -433,9 +284,12 @@ contract ServerKeyGenerationService is AuthoritiesOwnedFeeManager {
 /// Server key retrieval service contract. This contract allows to retrieve previously generated server keys.
 /// Server key (its public part) is returned in unencrypted form to any requester => only one active request
 /// is possible at a time.
-contract ServerKeyRetrievalService is AuthoritiesOwnedFeeManager {
-    /// Server key retrieval fee id.
-    string constant public SKRFEE = "SKRFEE";
+contract ServerKeyRetrievalService is AuthoritiesOwned {
+    /// Server key retrieval fee.
+    uint256 constant SKR_FEE = 100 finney;
+    /// Maximal number of active server key retrieval requests. We're limiting this number to avoid
+    /// infinite gas costs of some functions.
+    uint256 constant SKR_MAX_REQUESTS = 16;
 
     /// Server key retrieval request.
     struct ServerKeyRetrievalRequest {
@@ -451,13 +305,11 @@ contract ServerKeyRetrievalService is AuthoritiesOwnedFeeManager {
     /// When error occurs during server key retrieval.
     event ServerKeyRetrievalError(bytes32 indexed serverKeyId);
 
-    /// Constructor.
-    function ServerKeyRetrievalService() public {
-        registerFee(SKRFEE, 1 ether);
-    }
-
     /// Retrieve existing server key. Retrieved key will be published via ServerKeyRetrieved or ServerKeyRetrievalError.
-    function retrieveServerKey(bytes32 serverKeyId) public payable whenFeePaid(SKRFEE) {
+    function retrieveServerKey(bytes32 serverKeyId) public payable whenFeePaid(SKR_FEE) {
+        // check maximum number of requests
+        require(serverKeyRetrievalRequestsKeys.length < SKR_MAX_REQUESTS);
+
         ServerKeyRetrievalRequest storage request = serverKeyRetrievalRequests[serverKeyId];
         require(!request.isActive);
         deposit(msg.value);
@@ -475,22 +327,23 @@ contract ServerKeyRetrievalService is AuthoritiesOwnedFeeManager {
     }
 
     /// Called when retrieval is reported by one of authorities.
-    function serverKeyRetrieved(bytes32 serverKeyId, bytes serverKeyPublic, uint threshold) public onlyAuthority {
+    function serverKeyRetrieved(bytes32 serverKeyId, bytes serverKeyPublic, uint256 threshold) public validPublic(serverKeyPublic) {
+        // check that it is called by authority
+        uint8 authorityIndex = requireAuthority(msg.sender);
+
         // check if request still active
         ServerKeyRetrievalRequest storage request = serverKeyRetrievalRequests[serverKeyId];
         if (!request.isActive) {
             return;
         }
 
-        // insert and check confirmation
+        // insert threshold confirmation && confirmation itself
         bytes32 confirmation = keccak256(serverKeyPublic);
-        ConfirmationSupport confirmationSupport = insertConfirmationWithThreshold(
-            request.confirmations,
-            request.thresholdConfirmations,
-            getAuthoritiesCountInternal() / 2,
-            msg.sender,
-            threshold,
-            confirmation);
+        ConfirmationSupport confirmationSupport = insertServerKeyRetrievalConfirmation(
+            request,
+            authorityIndex,
+            confirmation,
+            threshold);
         if (confirmationSupport == ConfirmationSupport.Unconfirmed) {
             return;
         }
@@ -505,7 +358,10 @@ contract ServerKeyRetrievalService is AuthoritiesOwnedFeeManager {
     }
 
     /// Called when error occurs during server key retrieval.
-    function serverKeyRetrievalError(bytes32 serverKeyId) public onlyAuthority {
+    function serverKeyRetrievalError(bytes32 serverKeyId) public {
+        // check that it is called by authority
+        uint8 authorityIndex = requireAuthority(msg.sender);
+
         // check if request still active
         ServerKeyRetrievalRequest storage request = serverKeyRetrievalRequests[serverKeyId];
         if (!request.isActive) {
@@ -516,13 +372,11 @@ contract ServerKeyRetrievalService is AuthoritiesOwnedFeeManager {
         // => we could make an error fatal, but let's tolerate such issues
         // => insert invalid confirmation and check if there are enough confirmations
         bytes32 confirmation = bytes32(0);
-        ConfirmationSupport confirmationSupport = insertConfirmationWithThreshold(
-            request.confirmations,
-            request.thresholdConfirmations,
-            getAuthoritiesCountInternal() / 2,
-            msg.sender,
-            MAX_THRESHOLD,
-            confirmation);
+        ConfirmationSupport confirmationSupport = insertServerKeyRetrievalConfirmation(
+            request,
+            authorityIndex,
+            confirmation,
+            0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
         if (confirmationSupport == ConfirmationSupport.Unconfirmed) {
             return;
         }
@@ -540,27 +394,49 @@ contract ServerKeyRetrievalService is AuthoritiesOwnedFeeManager {
     /// Get server key retrieval request with given index.
     /// Returns: (serverKeyId)
     function getServerKeyRetrievalRequest(uint index) view public returns (bytes32) {
-        require(index < serverKeyRetrievalRequestsKeys.length);
         bytes32 serverKeyId = serverKeyRetrievalRequestsKeys[index];
-        ServerKeyRetrievalRequest storage request = serverKeyRetrievalRequests[serverKeyId];
-        require(request.isActive);
-        return (
-            serverKeyId
-        );
+        return (serverKeyId);
     }
 
     /// Get server key retrieval request confirmation status.
     function getServerKeyRetrievalRequestConfirmationStatus(bytes32 serverKeyId, address authority) view public returns (bool) {
+        uint8 authorityIndex = requireAuthority(authority);
         ServerKeyRetrievalRequest storage request = serverKeyRetrievalRequests[serverKeyId];
-        return request.isActive && !isConfirmedByAuthority(request.confirmations, authority);
+        return !isConfirmedByAuthority(request.confirmations, authorityIndex);
+    }
+
+    /// Insert both threshold and public confirmation.
+    function insertServerKeyRetrievalConfirmation(
+        ServerKeyRetrievalRequest storage request,
+        uint8 authorityIndex,
+        bytes32 confirmation,
+        uint256 threshold) private returns (ConfirmationSupport)
+    {
+        // insert threshold confirmation
+        bytes32 thresholdConfirmation = bytes32(threshold);
+        ConfirmationSupport thresholdConfirmationSupport = insertConfirmation(request.thresholdConfirmations,
+            authorityIndex, addresses.length / 2, thresholdConfirmation);
+        if (thresholdConfirmationSupport == ConfirmationSupport.Impossible) {
+            return thresholdConfirmationSupport;
+        }
+
+        // insert confirmation itself
+        bool checkThreshold = (thresholdConfirmationSupport == ConfirmationSupport.Confirmed);
+        ConfirmationSupport confirmationSupport = insertConfirmation(request.confirmations, authorityIndex,
+            threshold, confirmation);
+        if (!checkThreshold && confirmationSupport == ConfirmationSupport.Impossible) {
+            return ConfirmationSupport.Unconfirmed;
+        }
+        return confirmationSupport;
     }
 
     /// Delete server key retrieval request.
     function deleteServerKeyRetrievalRequest(bytes32 serverKeyId, ServerKeyRetrievalRequest storage request) private {
         clearConfirmations(request.confirmations);
         clearConfirmations(request.thresholdConfirmations);
-        removeRequestKey(serverKeyRetrievalRequestsKeys, serverKeyId);
         delete serverKeyRetrievalRequests[serverKeyId];
+
+        removeRequestKey(serverKeyRetrievalRequestsKeys, serverKeyId);
     }
 
     /// Pending generation requests.
@@ -572,13 +448,15 @@ contract ServerKeyRetrievalService is AuthoritiesOwnedFeeManager {
 
 /// Document key store service contract. This contract allows to store externally generated document key, which
 /// could be retrieved later.
-contract DocumentKeyStoreService is AuthoritiesOwnedFeeManager {
-    /// Document key store fee id.
-    string constant public DKSFEE = "DKSFEE";
+contract DocumentKeyStoreService is AuthoritiesOwned {
+    /// Document key store fee.
+    uint256 constant DKS_FEE = 100 finney;
+    /// Maximal number of active document key store requests. We're limiting this number to avoid
+    /// infinite gas costs of some functions.
+    uint256 constant DKS_MAX_REQUESTS = 16;
 
     /// Document key store request.
     struct DocumentKeyStoreRequest {
-        bool isActive;
         address author;
         bytes commonPoint;
         bytes encryptedPoint;
@@ -592,18 +470,19 @@ contract DocumentKeyStoreService is AuthoritiesOwnedFeeManager {
     /// When error occurs during document key store.
     event DocumentKeyStoreError(bytes32 indexed serverKeyId);
 
-    /// Constructor.
-    function DocumentKeyStoreService() public {
-        registerFee(DKSFEE, 1 ether);
-    }
-
     /// Request document key store.
-    function storeDocumentKey(bytes32 serverKeyId, bytes commonPoint, bytes encryptedPoint) public payable whenFeePaid(DKSFEE) {
+    function storeDocumentKey(bytes32 serverKeyId, bytes commonPoint, bytes encryptedPoint) public payable
+        whenFeePaid(DKS_FEE)
+        validPublic(commonPoint)
+        validPublic(encryptedPoint)
+    {
+        // check maximum number of requests
+        require(documentKeyStoreRequestsKeys.length < DKS_MAX_REQUESTS);
+
         DocumentKeyStoreRequest storage request = documentKeyStoreRequests[serverKeyId];
-        require(!request.isActive);
+        require(request.author == address(0));
         deposit(msg.value);
 
-        request.isActive = true;
         request.author = msg.sender;
         request.commonPoint = commonPoint;
         request.encryptedPoint = encryptedPoint;
@@ -613,20 +492,22 @@ contract DocumentKeyStoreService is AuthoritiesOwnedFeeManager {
     }
 
     /// Called when store is reported by one of authorities.
-    function documentKeyStored(bytes32 serverKeyId) public onlyAuthority {
+    function documentKeyStored(bytes32 serverKeyId) public {
+        // check that it is called by authority
+        uint8 authorityIndex = requireAuthority(msg.sender);
+
         // check if request still active
         DocumentKeyStoreRequest storage request = documentKeyStoreRequests[serverKeyId];
-        if (!request.isActive) {
+        if (request.author == address(0)) {
             return;
         }
 
-        // insert confirmation
+        // insert confirmation (we're waiting for confirmations from all authorities here)
         bytes32 confirmation = bytes32(0);
-        insertConfirmation(request.confirmations, msg.sender, confirmation);
+        ConfirmationSupport confirmationSupport = insertConfirmation(request.confirmations, authorityIndex,
+            addresses.length - 1, confirmation);
 
-        // ...and check if there are enough confirmations (all authorities must confirm)
-        ConfirmationSupport confirmationSupport = checkConfirmationSupport(request.confirmations, confirmation,
-            getAuthoritiesCountInternal() - 1);
+        // ...and check if there are enough confirmations
         if (confirmationSupport == ConfirmationSupport.Unconfirmed) {
             return;
         }
@@ -641,10 +522,13 @@ contract DocumentKeyStoreService is AuthoritiesOwnedFeeManager {
     }
 
     /// Called when error occurs during document key store.
-    function documentKeyStoreError(bytes32 serverKeyId) public onlyAuthority {
+    function documentKeyStoreError(bytes32 serverKeyId) public {
+        // check that it is called by authority
+        requireAuthority(msg.sender);
+
         // check if request still active
         DocumentKeyStoreRequest storage request = documentKeyStoreRequests[serverKeyId];
-        if (!request.isActive) {
+        if (request.author == address(0)) {
             return;
         }
 
@@ -662,10 +546,8 @@ contract DocumentKeyStoreService is AuthoritiesOwnedFeeManager {
     /// Get document key store request with given index.
     /// Returns: (serverKeyId, author, commonPoint, encryptedPoint)
     function getDocumentKeyStoreRequest(uint index) view public returns (bytes32, address, bytes, bytes) {
-        require(index < documentKeyStoreRequestsKeys.length);
         bytes32 serverKeyId = documentKeyStoreRequestsKeys[index];
         DocumentKeyStoreRequest storage request = documentKeyStoreRequests[serverKeyId];
-        require(request.isActive);
         return (
             serverKeyId,
             request.author,
@@ -676,15 +558,17 @@ contract DocumentKeyStoreService is AuthoritiesOwnedFeeManager {
 
     /// Get document key store request confirmation status.
     function getDocumentKeyStoreRequestConfirmationStatus(bytes32 serverKeyId, address authority) view public returns (bool) {
+        uint8 authorityIndex = requireAuthority(authority);
         DocumentKeyStoreRequest storage request = documentKeyStoreRequests[serverKeyId];
-        return request.isActive && !isConfirmedByAuthority(request.confirmations, authority);
+        return !isConfirmedByAuthority(request.confirmations, authorityIndex);
     }
 
     /// Delete document key store request.
     function deleteDocumentKeyStoreRequest(bytes32 serverKeyId, DocumentKeyStoreRequest storage request) private {
         clearConfirmations(request.confirmations);
-        removeRequestKey(documentKeyStoreRequestsKeys, serverKeyId);
         delete documentKeyStoreRequests[serverKeyId];
+
+        removeRequestKey(documentKeyStoreRequestsKeys, serverKeyId);
     }
 
     /// Pending store requests.
@@ -694,52 +578,55 @@ contract DocumentKeyStoreService is AuthoritiesOwnedFeeManager {
 }
 
 /// Document key retrieval service contract. This contract allows to retrieve previously stored document key.
-contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
-    /// Document key retrieval fee id.
-    string constant public DKSRFEE = "DKSRFEE";
+contract DocumentKeyShadowRetrievalService is AuthoritiesOwned {
+    /// Document key retrieval fee.
+    uint256 constant DKSSR_FEE = 100 finney;
+    /// Maximal number of active document key shadow retrieval requests. We're limiting this number to avoid
+    /// infinite gas costs of some functions.
+    uint256 constant DKSSR_MAX_REQUESTS = 16;
 
     /// Document key shadow retrieval request.
     struct DocumentKeyShadowRetrievalRequest {
-        bool isActive;
         bytes32 serverKeyId;
         bytes requesterPublic;
         Confirmations thresholdConfirmations;
         bool isCommonRetrievalCompleted;
-        uint threshold;
+        uint256 threshold;
+        uint256 personalRetrievalErrors;
+        uint8 personalRetrievalErrorsCount;
         bytes32[] dataKeys;
         mapping (bytes32 => DocumentKeyShadowRetrievalData) data;
     }
 
     /// Document key retrieval data.
     struct DocumentKeyShadowRetrievalData {
-        bool isActive;
-        address[] participants;
-        address[] reported;
+        uint256 participants;
+        uint256 reported;
+        uint8 reportedCount;
     }
 
     /// When document key common-portion retrieval request is received.
     event DocumentKeyCommonRetrievalRequested(bytes32 serverKeyId, address requester);
-    /// When document key retrieval request is received.
-    event DocumentKeyPersonalRetrievalRequested(bytes32 serverKeyId, bytes requesterPublic);
     /// When document key common portion is retrieved.
-    event DocumentKeyCommonRetrieved(bytes32 indexed serverKeyId, address indexed requester, bytes commonPoint, uint threshold);
+    event DocumentKeyCommonRetrieved(bytes32 indexed serverKeyId, address indexed requester, bytes commonPoint, uint256 threshold);
     /// When document key personal portion is retrieved.
     event DocumentKeyPersonalRetrieved(bytes32 indexed serverKeyId, address indexed requester, bytes decryptedSecret, bytes shadow);
     /// When error occurs during document key retrieval.
     event DocumentKeyShadowRetrievalError(bytes32 indexed serverKeyId, address indexed requester);
 
-    /// Constructor.
-    function DocumentKeyShadowRetrievalService() public {
-        registerFee(DKSRFEE, 1 ether);
-    }
-
     /// Request document key retrieval.
-    function retrieveDocumentKeyShadow(bytes32 serverKeyId, bytes requesterPublic) public payable whenFeePaid(DKSRFEE) {
-        require(computeAddress(requesterPublic) == msg.sender);
+    function retrieveDocumentKeyShadow(bytes32 serverKeyId, bytes requesterPublic) public payable
+        whenFeePaid(DKSSR_FEE)
+        validPublic(requesterPublic)
+    {
+        // we only accept requests from owner of requesterPublic key
+        require(address(uint(keccak256(requesterPublic)) & 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF) == msg.sender);
+        // check maximum number of requests
+        require(documentKeyShadowRetrievalRequestsKeys.length < DKSSR_MAX_REQUESTS);
 
         bytes32 retrievalId = keccak256(serverKeyId, msg.sender);
         DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
-        require(!request.isActive);
+        require(request.requesterPublic.length == 0);
         deposit(msg.value);
 
         // we do not know exact threshold value here && we can not blindly trust the first response
@@ -756,31 +643,31 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
         // 2.1) every node participating in decryption session publishes { address[], shadow }
         // 2.2) once there are threshold + 1 confirmations of { address[], shadow } from exactly address[] authorities, we are publishing the key
 
-        request.isActive = true;
         request.serverKeyId = serverKeyId;
         request.requesterPublic = requesterPublic;
-        request.isCommonRetrievalCompleted = false;
         documentKeyShadowRetrievalRequestsKeys.push(retrievalId);
 
         DocumentKeyCommonRetrievalRequested(serverKeyId, msg.sender);
     }
 
     /// Called when common data is reported by one of authorities.
-    function documentKeyCommonRetrieved(bytes32 serverKeyId, address requester, bytes commonPoint, uint threshold) public onlyAuthority {
+    function documentKeyCommonRetrieved(bytes32 serverKeyId, address requester, bytes commonPoint, uint256 threshold) public validPublic(commonPoint) {
+        // check that it is called by authority
+        uint8 authorityIndex = requireAuthority(msg.sender);
+
         // check if request still active
         bytes32 retrievalId = keccak256(serverKeyId, requester);
-        DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
-        if (!request.isActive || request.isCommonRetrievalCompleted) {
+        DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[serverKeyId];
+        if (request.requesterPublic.length == 0 || request.isCommonRetrievalCompleted) {
             return;
         }
 
         // insert confirmation
         bytes32 thresholdConfirmation = keccak256(commonPoint, threshold);
-        insertConfirmation(request.thresholdConfirmations, msg.sender, thresholdConfirmation);
+        ConfirmationSupport thresholdConfirmationSupport = insertConfirmation(request.thresholdConfirmations, authorityIndex,
+            addresses.length / 2, thresholdConfirmation);
 
         // ...and check if there are enough confirmations
-        ConfirmationSupport thresholdConfirmationSupport = checkConfirmationSupport(request.thresholdConfirmations,
-            thresholdConfirmation, getAuthoritiesCountInternal() / 2);
         if (thresholdConfirmationSupport == ConfirmationSupport.Unconfirmed) {
             return;
         }
@@ -796,58 +683,51 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
         request.isCommonRetrievalCompleted = true;
         request.threshold = threshold;
 
-        // ...and publish common data (also signal 'master' key server to start decryption)
+        // ...and publish common data (this is also a signal to 'master' key server to start decryption)
         DocumentKeyCommonRetrieved(serverKeyId, requester, commonPoint, threshold);
-        DocumentKeyPersonalRetrievalRequested(serverKeyId, request.requesterPublic);
     }
 
     /// Called when 'personal' data is reported by one of authorities.
-    function documentKeyPersonalRetrieved(bytes32 serverKeyId, address requester, address[] participants, bytes decryptedSecret, bytes shadow) public onlyAuthority {
+    function documentKeyPersonalRetrieved(bytes32 serverKeyId, address requester, uint256 participants, bytes decryptedSecret, bytes shadow) public
+        validPublic(decryptedSecret)
+    {
+        // check that it is called by authority
+        uint8 authorityIndex = requireAuthority(msg.sender);
+
         // check if request still active
         bytes32 retrievalId = keccak256(serverKeyId, requester);
         DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
-        if (!request.isActive) {
+        if (request.requesterPublic.length == 0) {
             return;
         }
         require(request.isCommonRetrievalCompleted);
 
         // there must be exactly threshold + 1 participants
-        require(request.threshold + 1 == participants.length);
+        // require(request.threshold + 1 == participants.length);
 
         // authority must have an entry in participants
-        bool isParticipant = false;
-        for (uint i = 0; i < participants.length; ++i) {
-            if (participants[i] == msg.sender) {
-                isParticipant = true;
-                break;
-            }
-        }
-        require(isParticipant);
+        uint256 authorityMask = (uint256(1) << authorityIndex);
+        require((participants & authorityMask) != 0);
 
-        // order of participants matter => all reporters must respond with equally-ordered participants array
+        // insert new data
         bytes32 retrievalDataId = keccak256(participants, decryptedSecret);
         DocumentKeyShadowRetrievalData storage data = request.data[retrievalDataId];
-        if (!data.isActive) {
+        if (data.participants == 0) {
             request.dataKeys.push(retrievalDataId);
-
-            data.isActive = true;
             data.participants = participants;
         } else {
-            for (uint j = 0; j < data.reported.length; ++j) {
-                if (data.reported[j] == msg.sender) {
-                    return;
-                }
-            }
+            require((data.reported & authorityMask) == 0);
         }
 
         // remember result
-        data.reported.push(msg.sender);
+        data.reportedCount += 1;
+        data.reported |= authorityMask;
 
         // publish personal portion
         DocumentKeyPersonalRetrieved(serverKeyId, requester, decryptedSecret, shadow);
 
         // check if all participants have responded
-        if (request.threshold + 1 != data.reported.length) {
+        if (request.threshold + 1 != data.reportedCount) {
             return;
         }
 
@@ -857,23 +737,25 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
     }
 
     /// Called when error occurs during document key retrieval.
-    function documentKeyShadowRetrievalError(bytes32 serverKeyId, address requester) public onlyAuthority {
+    function documentKeyShadowRetrievalError(bytes32 serverKeyId, address requester) public {
+        // check that it is called by authority
+        uint8 authorityIndex = requireAuthority(msg.sender);
+
         // check if request still active
         bytes32 retrievalId = keccak256(serverKeyId, requester);
-        DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[serverKeyId];
-        if (!request.isActive) {
+        DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
+        if (request.requesterPublic.length == 0) {
             return;
         }
 
         // error on common data retrieval step is treated like a voting for non-existant common data
         if (!request.isCommonRetrievalCompleted) {
             // insert confirmation
-            bytes32 thresholdConfirmation = bytes32(0);
-            insertConfirmation(request.thresholdConfirmations, msg.sender, thresholdConfirmation);
+            bytes32 thresholdConfirmation = bytes32(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
+            ConfirmationSupport thresholdConfirmationSupport = insertConfirmation(request.thresholdConfirmations, authorityIndex,
+                addresses.length / 2, thresholdConfirmation);
 
             // ...and check if there are enough confirmations
-            ConfirmationSupport thresholdConfirmationSupport = checkConfirmationSupport(request.thresholdConfirmations,
-                thresholdConfirmation, getAuthoritiesCountInternal() / 2);
             if (thresholdConfirmationSupport == ConfirmationSupport.Unconfirmed) {
                 return;
             }
@@ -884,8 +766,24 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
             return;
         }
 
-        // when error occurs on personal retrieval step, we just ignore it, hoping for retry
-        // TODO: not correct - what if access changes to access denied???
+        // when error occurs on personal retrieval step, we're waiting until there are threshold + 1 errors
+        // check if haven't voted before
+        uint256 authorityMask = uint256(1) << authorityIndex;
+        if ((request.personalRetrievalErrors & authorityMask) != 0) {
+            return;
+        }
+        request.personalRetrievalErrors |= authorityMask;
+        request.personalRetrievalErrorsCount += 1;
+
+        // check if we have enough errors
+        if (request.threshold + 1 != request.personalRetrievalErrorsCount) {
+            return;
+        }
+
+        // delete request and fire event
+        deleteDocumentKeyShadowRetrievalRequest(retrievalId, request);
+        DocumentKeyShadowRetrievalError(serverKeyId, requester);
+        return;
     }
 
     /// Get count of pending document key retrieval requests.
@@ -896,11 +794,8 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
     /// Get document key retrieval request with given index.
     /// Returns: (serverKeyId, requesterPublic, isCommonRetrievalCompleted)
     function getDocumentKeyShadowRetrievalRequest(uint index) view public returns (bytes32, bytes, bool) {
-        require(index < documentKeyShadowRetrievalRequestsKeys.length);
         bytes32 retrievalId = documentKeyShadowRetrievalRequestsKeys[index];
         DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
-        require(request.isActive);
-        // TODO: we do not process pending requests which has returned isConfirmed == true => return false when threshold has completed
         return (
             request.serverKeyId,
             request.requesterPublic,
@@ -910,22 +805,22 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
 
     /// Get document key store request confirmation status.
     function getDocumentKeyShadowRetrievalRequestConfirmationStatus(bytes32 serverKeyId, address requester, address authority) view public returns (bool) {
+        uint8 authorityIndex = requireAuthority(authority);
         bytes32 retrievalId = keccak256(serverKeyId, requester);
         DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
-        return request.isActive && !isConfirmedByAuthority(request.thresholdConfirmations, authority);
+        return !request.isCommonRetrievalCompleted &&
+            !isConfirmedByAuthority(request.thresholdConfirmations, authorityIndex);
     }
 
     /// Delete document key retrieval request.
     function deleteDocumentKeyShadowRetrievalRequest(bytes32 retrievalId, DocumentKeyShadowRetrievalRequest storage request) private {
         for (uint i = 0; i < request.dataKeys.length; ++i) {
-            DocumentKeyShadowRetrievalData storage data = request.data[request.dataKeys[i]];
-            delete data.participants;
-            delete data.reported;
+            delete request.data[request.dataKeys[i]];
         }
         clearConfirmations(request.thresholdConfirmations);
-        removeRequestKey(documentKeyShadowRetrievalRequestsKeys, retrievalId);
-        delete request.dataKeys;
         delete documentKeyShadowRetrievalRequests[retrievalId];
+
+        removeRequestKey(documentKeyShadowRetrievalRequestsKeys, retrievalId);
     }
 
     /// Pending retrieval requests.
@@ -934,11 +829,9 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwnedFeeManager {
     bytes32[] documentKeyShadowRetrievalRequestsKeys;
 }
 
-
 /// Secret store service contract.
-contract SecretStoreService is AuthoritiesOwned, AuthoritiesOwnedFeeManager,
-    ServerKeyGenerationService, ServerKeyRetrievalService,
-    DocumentKeyStoreService, DocumentKeyShadowRetrievalService {
+contract SecretStoreService is AuthoritiesOwned, ServerKeyGenerationService,
+    ServerKeyRetrievalService, DocumentKeyStoreService, DocumentKeyShadowRetrievalService {
     /// Constructor.
     function SecretStoreService(address[] initialAuthorities) AuthoritiesOwned(initialAuthorities) public {
     }
