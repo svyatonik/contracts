@@ -62,7 +62,7 @@ contract AuthoritiesOwned {
     }
 
     /// Require authority index.
-    function requireAuthority(address authority) view internal returns (uint8) {
+    function requireAuthority(address authority) view public returns (uint8) {
         uint8 index = indexes[authority];
         require(index != 0);
         return index - 1;
@@ -146,11 +146,11 @@ contract AuthoritiesOwned {
     }
 
     /// Authorities indexes.
-    mapping (address => uint8) public indexes;
+    mapping (address => uint8) internal indexes;
     /// Authorities addresses.
-    address[] public addresses;
+    address[] internal addresses;
     /// Balances of authorities.
-    uint256[] public balances;
+    uint256[] internal balances;
 }
 
 
@@ -607,6 +607,8 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwned {
 
     /// When document key common-portion retrieval request is received.
     event DocumentKeyCommonRetrievalRequested(bytes32 serverKeyId, address requester);
+    /// When document key personal-portion retrieval request is received.
+    event DocumentKeyPersonalRetrievalRequested(bytes32 serverKeyId, bytes requesterPublic);
     /// When document key common portion is retrieved.
     event DocumentKeyCommonRetrieved(bytes32 indexed serverKeyId, address indexed requester, bytes commonPoint, uint256 threshold);
     /// When document key personal portion is retrieved.
@@ -685,6 +687,7 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwned {
 
         // ...and publish common data (this is also a signal to 'master' key server to start decryption)
         DocumentKeyCommonRetrieved(serverKeyId, requester, commonPoint, threshold);
+        DocumentKeyPersonalRetrievalRequested(serverKeyId, request.requesterPublic);
     }
 
     /// Called when 'personal' data is reported by one of authorities.
@@ -808,7 +811,7 @@ contract DocumentKeyShadowRetrievalService is AuthoritiesOwned {
         uint8 authorityIndex = requireAuthority(authority);
         bytes32 retrievalId = keccak256(serverKeyId, requester);
         DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
-        return !request.isCommonRetrievalCompleted &&
+        return request.isCommonRetrievalCompleted ||
             !isConfirmedByAuthority(request.thresholdConfirmations, authorityIndex);
     }
 
