@@ -14,58 +14,76 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-pragma solidity ^0.4.18;
+pragma solidity ^0.4.21;
 
-// Simple key server set.
+/// Simple key server set.
 interface KeyServerSet {
-	// Get all current key servers.
-	function getCurrentKeyServers() public constant returns (address[]);
-	// Get current key server public key.
-	function getCurrentKeyServerPublic(address keyServer) public constant returns (bytes);
-	// Get current key server address.
-	function getCurrentKeyServerAddress(address keyServer) public constant returns (string);
+	/// Get number of block when current set has been changed last time.
+	function getCurrentLastChange() external view returns (uint256);
+	/// Get index of given key server in current set.
+	function getCurrentKeyServerIndex(address keyServer) external view returns (uint8);
+	/// Get count of key servers in current set.
+	function getCurrentKeyServersCount() external view returns (uint8);
+	/// Get address of key server in current set.
+	function getCurrentKeyServer(uint8 index) external view returns (address);
+
+	/// Get all current key servers.
+	function getCurrentKeyServers() external view returns (address[]);
+	/// Get current key server public key.
+	function getCurrentKeyServerPublic(address keyServer) external view returns (bytes);
+	/// Get current key server address.
+	function getCurrentKeyServerAddress(address keyServer) external view returns (string);
 }
 
-// Key server set with migration support.
+/// Key server set with migration support.
 interface KeyServerSetWithMigration {
-	// When new server is added to new set.
+	/// When new server is added to new set.
 	event KeyServerAdded(address keyServer);
-	// When existing server is removed from new set.
+	/// When existing server is removed from new set.
 	event KeyServerRemoved(address keyServer);
-	// When migration is started.
+	/// When migration is started.
 	event MigrationStarted();
-	// When migration is completed.
+	/// When migration is completed.
 	event MigrationCompleted();
 
-	// Get all current key servers.
-	function getCurrentKeyServers() public constant returns (address[]);
-	// Get current key server public key.
-	function getCurrentKeyServerPublic(address keyServer) public constant returns (bytes);
-	// Get current key server address.
-	function getCurrentKeyServerAddress(address keyServer) public constant returns (string);
+	/// Get number of block when current set has been changed last time.
+	function getCurrentLastChange() external view returns (uint256);
+	/// Get index of given key server in current set.
+	function getCurrentKeyServerIndex(address keyServer) external view returns (uint8);
+	/// Get count of key servers in current set.
+	function getCurrentKeyServersCount() external view returns (uint8);
+	/// Get address of key server in current set.
+	function getCurrentKeyServer(uint8 index) external view returns (address);
 
-	// Get all migration key servers.
-	function getMigrationKeyServers() public constant returns (address[]);
-	// Get migration key server public key.
-	function getMigrationKeyServerPublic(address keyServer) public constant returns (bytes);
-	// Get migration key server address.
-	function getMigrationKeyServerAddress(address keyServer) public constant returns (string);
+	/// Get all current key servers.
+	function getCurrentKeyServers() external view returns (address[]);
+	/// Get current key server public key.
+	function getCurrentKeyServerPublic(address keyServer) external view returns (bytes);
+	/// Get current key server address.
+	function getCurrentKeyServerAddress(address keyServer) external view returns (string);
 
-	// Get all new key servers.
-	function getNewKeyServers() public constant returns (address[]);
-	// Get new key server public key.
-	function getNewKeyServerPublic(address keyServer) public constant returns (bytes);
-	// Get new key server address.
-	function getNewKeyServerAddress(address keyServer) public constant returns (string);
+	/// Get all migration key servers.
+	function getMigrationKeyServers() external view returns (address[]);
+	/// Get migration key server public key.
+	function getMigrationKeyServerPublic(address keyServer) external view returns (bytes);
+	/// Get migration key server address.
+	function getMigrationKeyServerAddress(address keyServer) external view returns (string);
 
-	// Get migration id.
-	function getMigrationId() public view returns (bytes32);
-	// Get migration master.
-	function getMigrationMaster() public constant returns (address);
-	// Is migration confirmed by given node?
-	function isMigrationConfirmed(address keyServer) public view returns (bool);
-	// Start migration.
-	function startMigration(bytes32 id) public;
-	// Confirm migration.
-	function confirmMigration(bytes32 id) public;
+	/// Get all new key servers.
+	function getNewKeyServers() external view returns (address[]);
+	/// Get new key server public key.
+	function getNewKeyServerPublic(address keyServer) external view returns (bytes);
+	/// Get new key server address.
+	function getNewKeyServerAddress(address keyServer) external view returns (string);
+
+	/// Get migration id.
+	function getMigrationId() external view returns (bytes32);
+	/// Get migration master.
+	function getMigrationMaster() external view returns (address);
+	/// Is migration confirmed by given node?
+	function isMigrationConfirmed(address keyServer) external view returns (bool);
+	/// Start migration.
+	function startMigration(bytes32 id) external;
+	/// Confirm migration.
+	function confirmMigration(bytes32 id) external;
 }
