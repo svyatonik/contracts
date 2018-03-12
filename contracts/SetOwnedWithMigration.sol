@@ -218,7 +218,7 @@ contract OwnedKeyServerSetWithMigration is Owned, KeyServerSetWithMigration {
             appendToSet(currentSet, keyServerPublic, keyServerIp);
         }
         // fire event
-        emit KeyServerAdded(keyServer);
+        KeyServerAdded(keyServer);
     }
 
     // Remove key server from set.
@@ -230,7 +230,7 @@ contract OwnedKeyServerSetWithMigration is Owned, KeyServerSetWithMigration {
             removeFromSet(currentSet, keyServer);
         }
         // fire event
-        emit KeyServerRemoved(keyServer);
+        KeyServerRemoved(keyServer);
     }
 
     // Get migration id.
@@ -246,7 +246,7 @@ contract OwnedKeyServerSetWithMigration is Owned, KeyServerSetWithMigration {
         migrationMaster = msg.sender;
         migrationId = id;
         copySet(migrationSet, newSet);
-        emit MigrationStarted();
+        MigrationStarted();
     }
 
     // Confirm migration.
@@ -274,7 +274,7 @@ contract OwnedKeyServerSetWithMigration is Owned, KeyServerSetWithMigration {
         clearSet(migrationSet);
 
         // ...and fire completion event
-        emit MigrationCompleted();
+        MigrationCompleted();
 
         // ...and update current server set change block
         currentSetChangeBlock = block.number;

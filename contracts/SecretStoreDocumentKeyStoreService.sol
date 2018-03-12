@@ -83,7 +83,7 @@ contract SecretStoreDocumentKeyStoreService is SecretStoreServiceBase,
         request.encryptedPoint = encryptedPoint;
         documentKeyStoreRequestsKeys.push(serverKeyId);
 
-        emit DocumentKeyStoreRequested(serverKeyId, msg.sender, commonPoint, encryptedPoint);
+        DocumentKeyStoreRequested(serverKeyId, msg.sender, commonPoint, encryptedPoint);
     }
 
     /// Called when store is reported by key server.
@@ -108,9 +108,9 @@ contract SecretStoreDocumentKeyStoreService is SecretStoreServiceBase,
         // delete request and fire event
         clearDocumentKeyStoreRequest(serverKeyId, request);
         if (responseSupport == ResponseSupport.Confirmed) { // confirmed
-            emit DocumentKeyStored(serverKeyId);
+            DocumentKeyStored(serverKeyId);
         } else { // no consensus possible at all
-            emit DocumentKeyStoreError(serverKeyId);
+            DocumentKeyStoreError(serverKeyId);
         }
     }
 
@@ -128,7 +128,7 @@ contract SecretStoreDocumentKeyStoreService is SecretStoreServiceBase,
         // any error in key store is fatal, because we need all key servers to participate in store
         // => delete request and fire event
         clearDocumentKeyStoreRequest(serverKeyId, request);
-        emit DocumentKeyStoreError(serverKeyId);
+        DocumentKeyStoreError(serverKeyId);
     }
 
     /// Get count of pending document key store requests.

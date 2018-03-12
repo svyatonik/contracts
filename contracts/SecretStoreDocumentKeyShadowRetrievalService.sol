@@ -123,7 +123,7 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
         request.requesterPublic = requesterPublic;
         documentKeyShadowRetrievalRequestsKeys.push(retrievalId);
 
-        emit DocumentKeyCommonRetrievalRequested(serverKeyId, msg.sender);
+        DocumentKeyCommonRetrievalRequested(serverKeyId, msg.sender);
     }
 
     /// Called when common data is reported by key server.
@@ -149,7 +149,7 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
         // if common consensus isn't possible => personal retrieval is also impossible
         if (commonResponseSupport == ResponseSupport.Impossible) {
             clearDocumentKeyShadowRetrievalRequest(retrievalId, request);
-            emit DocumentKeyShadowRetrievalError(serverKeyId, requester);
+            DocumentKeyShadowRetrievalError(serverKeyId, requester);
             return;
         }
 
@@ -158,8 +158,8 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
         request.threshold = threshold;
 
         // ...and publish common data (this is also a signal to 'master' key server to start decryption)
-        emit DocumentKeyCommonRetrieved(serverKeyId, requester, commonPoint, threshold);
-        emit DocumentKeyPersonalRetrievalRequested(serverKeyId, request.requesterPublic);
+        DocumentKeyCommonRetrieved(serverKeyId, requester, commonPoint, threshold);
+        DocumentKeyPersonalRetrievalRequested(serverKeyId, request.requesterPublic);
     }
 
     /// Called when 'personal' data is reported by key server.
@@ -196,7 +196,7 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
         personalData.reported |= keyServerMask;
 
         // publish personal portion
-        emit DocumentKeyPersonalRetrieved(serverKeyId, requester, decryptedSecret, shadow);
+        DocumentKeyPersonalRetrieved(serverKeyId, requester, decryptedSecret, shadow);
 
         // check if all participants have responded
         if (request.threshold + 1 != personalData.reportedCount) {
@@ -231,7 +231,7 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
 
             // delete request and fire event
             clearDocumentKeyShadowRetrievalRequest(retrievalId, request);
-            emit DocumentKeyShadowRetrievalError(serverKeyId, requester);
+            DocumentKeyShadowRetrievalError(serverKeyId, requester);
             return;
         }
 
@@ -261,7 +261,7 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
 
         // delete request and fire event
         clearDocumentKeyShadowRetrievalRequest(retrievalId, request);
-        emit DocumentKeyShadowRetrievalError(serverKeyId, requester);
+        DocumentKeyShadowRetrievalError(serverKeyId, requester);
     }
 
     /// Get count of pending document key shadow retrieval requests.

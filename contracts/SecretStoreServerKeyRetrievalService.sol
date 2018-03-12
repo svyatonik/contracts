@@ -81,7 +81,7 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase,
         request.isActive = true;
         serverKeyRetrievalRequestsKeys.push(serverKeyId);
 
-        emit ServerKeyRetrievalRequested(serverKeyId);
+        ServerKeyRetrievalRequested(serverKeyId);
     }
 
     /// Called when retrieval is reported by key server.
@@ -107,9 +107,9 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase,
         // delete request and fire event
         clearServerKeyRetrievalRequest(serverKeyId, request);
         if (responseSupport == ResponseSupport.Confirmed) { // confirmed
-            emit ServerKeyRetrieved(serverKeyId, serverKeyPublic);
+            ServerKeyRetrieved(serverKeyId, serverKeyPublic);
         } else { // no consensus possible at all
-            emit ServerKeyRetrievalError(serverKeyId);
+            ServerKeyRetrievalError(serverKeyId);
         }
     }
 
@@ -136,7 +136,7 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase,
 
         // delete request and fire event
         clearServerKeyRetrievalRequest(serverKeyId, request);
-        emit ServerKeyRetrievalError(serverKeyId);
+        ServerKeyRetrievalError(serverKeyId);
     }
 
     /// Get count of pending server key retrieval requests.
