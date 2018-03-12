@@ -21,8 +21,7 @@ import "./SecretStoreServiceBase.sol";
 
 
 /// Server Key retrieval service contract.
-contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase,
-    ServerKeyRetrievalServiceClientApi, ServerKeyRetrievalServiceKeyServerApi {
+contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerKeyRetrievalServiceClientApi, ServerKeyRetrievalServiceKeyServerApi {
     /// Server key retrieval request.
     struct ServerKeyRetrievalRequest {
         bool isActive;
@@ -43,28 +42,15 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase,
         maxServerKeyRetrievalRequests = 8;
     }
 
-    // === Administrative methods ===
-
-    /// Set server key retrieval fee.
-    function setServerKeyRetrievalFee(uint256 newFee) public only_owner {
-        serverKeyRetrievalFee = newFee;
-    }
-
-    /// Set server key retrieval requests limit.
-    function setMaxServerKeyRetrievalRequests(uint256 newLimit) public only_owner {
-        maxServerKeyRetrievalRequests = newLimit;
-    }
-
-    /// Delete server key retrieval request.
-    function deleteServerKeyRetrievalRequest(bytes32 serverKeyId) public only_owner {
-        ServerKeyRetrievalRequest storage request = serverKeyRetrievalRequests[serverKeyId];
-        clearServerKeyRetrievalRequest(serverKeyId, request);
-    }
-
     // === Interface methods ===
 
+    /// We do not support direct payments.
+    function() payable public { revert(); }
+
     /// Retrieve existing server key. Retrieved key will be published via ServerKeyRetrieved or ServerKeyRetrievalError.
-    function retrieveServerKey(bytes32 serverKeyId) external payable whenFeePaid(serverKeyRetrievalFee) {
+    function retrieveServerKey(bytes32 serverKeyId) external  payable
+        whenFeePaid(serverKeyRetrievalFee)
+    {
         // check maximum number of requests
         require(serverKeyRetrievalRequestsKeys.length < maxServerKeyRetrievalRequests);
 
@@ -96,8 +82,11 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase,
         // it checks that tx.origin is actually the key server
         uint8 keyServerIndex = requireKeyServer(msg.sender);
         bytes32 response = keccak256(serverKeyPublic);
-        ResponseSupport responseSupport = insertServerKeyRetrievalResponse(request, keyServerIndex,
-            response, threshold);
+        ResponseSupport responseSupport = insertServerKeyRetrievalResponse(
+            request,
+            keyServerIndex,
+            response,
+            threshold);
 
         // ...and check if there are enough support
         if (responseSupport == ResponseSupport.Unconfirmed) { // not confirmed (yet)
@@ -128,8 +117,11 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase,
         // => we could make an error fatal, but let's tolerate such issues
         // => insert invalid response and check if there are enough confirmations
         bytes32 invalidResponse = bytes32(0);
-        ResponseSupport responseSupport = insertServerKeyRetrievalResponse(request, keyServerIndex,
-            invalidResponse, keyServersCount() / 2);
+        ResponseSupport responseSupport = insertServerKeyRetrievalResponse(
+            request,
+            keyServerIndex,
+            invalidResponse,
+            keyServersCount() / 2);
         if (responseSupport == ResponseSupport.Unconfirmed) {
             return;
         }
@@ -160,6 +152,26 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase,
         return isResponseRequired(request.thresholdResponses, keyServerIndex);
     }
 
+    // === Administrative methods ===
+
+    /// Set server key retrieval fee.
+    function setServerKeyRetrievalFee(uint256 newFee) public only_owner {
+        serverKeyRetrievalFee = newFee;
+    }
+
+    /// Set server key retrieval requests limit.
+    function setMaxServerKeyRetrievalRequests(uint256 newLimit) public only_owner {
+        maxServerKeyRetrievalRequests = newLimit;
+    }
+
+    /// Delete server key retrieval request.
+    function deleteServerKeyRetrievalRequest(bytes32 serverKeyId) public only_owner {
+        ServerKeyRetrievalRequest storage request = serverKeyRetrievalRequests[serverKeyId];
+        clearServerKeyRetrievalRequest(serverKeyId, request);
+    }
+
+    // === Internal methods ===
+
     /// Insert both threshold and public response.
     function insertServerKeyRetrievalResponse(
         ServerKeyRetrievalRequest storage request,
@@ -169,16 +181,22 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase,
     {
         // insert threshold response
         bytes32 thresholdResponse = bytes32(threshold);
-        ResponseSupport thresholdResponseSupport = insertResponse(request.thresholdResponses, keyServerIndex,
-            keyServersCount() / 2, thresholdResponse);
+        ResponseSupport thresholdResponseSupport = insertResponse(
+            request.thresholdResponses,
+            keyServerIndex,
+            keyServersCount() / 2,
+            thresholdResponse);
         if (thresholdResponseSupport == ResponseSupport.Impossible) {
             return thresholdResponseSupport;
         }
 
         // insert response itself
         bool checkThreshold = (thresholdResponseSupport == ResponseSupport.Confirmed);
-        ResponseSupport responseSupport = insertResponse(request.responses, keyServerIndex,
-            threshold, response);
+        ResponseSupport responseSupport = insertResponse(
+            request.responses,
+            keyServerIndex,
+            threshold,
+            response);
         if (!checkThreshold && responseSupport == ResponseSupport.Impossible) {
             return ResponseSupport.Unconfirmed;
         }

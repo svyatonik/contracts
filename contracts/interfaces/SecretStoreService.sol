@@ -134,7 +134,12 @@ interface DocumentKeyShadowRetrievalServiceKeyServerApi {
     /// Called when common data is reported by key server.
     function documentKeyCommonRetrieved(bytes32 serverKeyId, address requester, bytes commonPoint, uint256 threshold) external;
     /// Called when 'personal' data is reported by key server.
-    function documentKeyPersonalRetrieved(bytes32 serverKeyId, address requester, uint256 participants, bytes decryptedSecret, bytes shadow) external;
+    function documentKeyPersonalRetrieved(
+        bytes32 serverKeyId,
+        address requester,
+        uint256 participants,
+        bytes decryptedSecret,
+        bytes shadow) external;
     /// Called when error occurs during document key shadow retrieval.
     function documentKeyShadowRetrievalError(bytes32 serverKeyId, address requester) external;
 

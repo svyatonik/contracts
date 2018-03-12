@@ -21,8 +21,7 @@ import "./SecretStoreServiceBase.sol";
 
 
 /// Document Key shadow retrieval service contract.
-contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
-    DocumentKeyShadowRetrievalServiceClientApi, DocumentKeyShadowRetrievalServiceKeyServerApi {
+contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase, DocumentKeyShadowRetrievalServiceClientApi, DocumentKeyShadowRetrievalServiceKeyServerApi {
     /// Document key shadow retrieval request.
     struct DocumentKeyShadowRetrievalRequest {
         // public portion-related data
@@ -70,26 +69,10 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
         maxDocumentKeyShadowRetrievalRequests = 4;
     }
 
-    // === Administrative methods ===
-
-    /// Set document key shadow retrieval fee.
-    function setDocumentKeyShadowRetirevalFee(uint256 newFee) public only_owner {
-        documentKeyShadowRetrievalFee = newFee;
-    }
-
-    /// Set document key shadow retrieval requests limit.
-    function setMaxDocumentKeyShadowRetrievalRequests(uint256 newLimit) public only_owner {
-        maxDocumentKeyShadowRetrievalRequests = newLimit;
-    }
-
-    /// Delete document key shadow retrieval request.
-    function deleteDocumentKeyShadowRetrievalRequest(bytes32 serverKeyId, address requester) public only_owner {
-        bytes32 retrievalId = keccak256(serverKeyId, requester);
-        DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
-        clearDocumentKeyShadowRetrievalRequest(retrievalId, request);
-    }
-
     // === Interface methods ===
+
+    /// We do not support direct payments.
+    function() payable public { revert(); }
 
     /// Request document key retrieval.
     function retrieveDocumentKeyShadow(bytes32 serverKeyId, bytes requesterPublic) external payable
@@ -138,8 +121,11 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
         // insert response
         uint8 keyServerIndex = requireKeyServer(msg.sender);
         bytes32 commonResponse = keccak256(commonPoint, threshold);
-        ResponseSupport commonResponseSupport = insertResponse(request.commonRetrievalResponses, keyServerIndex,
-            keyServersCount() / 2, commonResponse);
+        ResponseSupport commonResponseSupport = insertResponse(
+            request.commonRetrievalResponses,
+            keyServerIndex,
+            keyServersCount() / 2,
+            commonResponse);
 
         // ...and check if there are enough support
         if (commonResponseSupport == ResponseSupport.Unconfirmed) { // not confirmed (yet)
@@ -163,7 +149,12 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
     }
 
     /// Called when 'personal' data is reported by key server.
-    function documentKeyPersonalRetrieved(bytes32 serverKeyId, address requester, uint256 participants, bytes decryptedSecret, bytes shadow) external
+    function documentKeyPersonalRetrieved(
+        bytes32 serverKeyId,
+        address requester,
+        uint256 participants,
+        bytes decryptedSecret,
+        bytes shadow) external
         validPublic(decryptedSecret)
     {
         // check if request still active
@@ -221,8 +212,11 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
         if (!request.isCommonRetrievalCompleted) {
             // insert response
             bytes32 invalidResponse = bytes32(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
-            ResponseSupport invalidResponseSupport = insertResponse(request.commonRetrievalResponses, keyServerIndex,
-                keyServersCount() / 2, invalidResponse);
+            ResponseSupport invalidResponseSupport = insertResponse(
+                request.commonRetrievalResponses,
+                keyServerIndex,
+                keyServersCount() / 2,
+                invalidResponse);
 
             // ...and check if there are enough confirmations for invalid response
             if (invalidResponseSupport == ResponseSupport.Unconfirmed) {
@@ -290,6 +284,27 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
         return request.isCommonRetrievalCompleted ||
             isResponseRequired(request.commonRetrievalResponses, keyServerIndex);
     }
+
+    // === Administrative methods ===
+
+    /// Set document key shadow retrieval fee.
+    function setDocumentKeyShadowRetirevalFee(uint256 newFee) public only_owner {
+        documentKeyShadowRetrievalFee = newFee;
+    }
+
+    /// Set document key shadow retrieval requests limit.
+    function setMaxDocumentKeyShadowRetrievalRequests(uint256 newLimit) public only_owner {
+        maxDocumentKeyShadowRetrievalRequests = newLimit;
+    }
+
+    /// Delete document key shadow retrieval request.
+    function deleteDocumentKeyShadowRetrievalRequest(bytes32 serverKeyId, address requester) public only_owner {
+        bytes32 retrievalId = keccak256(serverKeyId, requester);
+        DocumentKeyShadowRetrievalRequest storage request = documentKeyShadowRetrievalRequests[retrievalId];
+        clearDocumentKeyShadowRetrievalRequest(retrievalId, request);
+    }
+
+    // === Internal methods ===
 
     /// Clear document key shadow retrieval request traces.
     function clearDocumentKeyShadowRetrievalRequest(bytes32 retrievalId, DocumentKeyShadowRetrievalRequest storage request) private {

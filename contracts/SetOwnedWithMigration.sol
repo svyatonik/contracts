@@ -134,12 +134,8 @@ contract OwnedKeyServerSetWithMigration is Owned, KeyServerSetWithMigration {
         _;
     }
 
-    // Complete initialization. Before this function is called, all calls to addKeyServer/removeKeyServer
-    // affect both newSet and currentSet.
-    function completeInitialization() public only_owner {
-        require(!isInitialized);
-        isInitialized = true;
-    }
+    /// We do not support direct payments.
+    function() payable public { revert(); }
 
     /// Get number of block when current set has been changed last time.
     function getCurrentLastChange() external view returns (uint256) {
@@ -209,30 +205,6 @@ contract OwnedKeyServerSetWithMigration is Owned, KeyServerSetWithMigration {
         return newSet.map[keyServer].ip;
     }
 
-    // Add new key server to set.
-    function addKeyServer(bytes keyServerPublic, string keyServerIp) public only_owner isValidPublic(keyServerPublic) isNotOnNewSet(computeAddress(keyServerPublic)) {
-        // append to the new set
-        address keyServer = appendToSet(newSet, keyServerPublic, keyServerIp);
-        // also append to current set
-        if (!isInitialized) {
-            appendToSet(currentSet, keyServerPublic, keyServerIp);
-        }
-        // fire event
-        KeyServerAdded(keyServer);
-    }
-
-    // Remove key server from set.
-    function removeKeyServer(address keyServer) public only_owner isOnNewSet(keyServer) {
-        // remove element from the new set
-        removeFromSet(newSet, keyServer);
-        // also remove from the current set
-        if (!isInitialized) {
-            removeFromSet(currentSet, keyServer);
-        }
-        // fire event
-        KeyServerRemoved(keyServer);
-    }
-
     // Get migration id.
     function getMigrationId() isValidMigrationId(migrationId) external view returns (bytes32) {
         return migrationId;
@@ -288,6 +260,37 @@ contract OwnedKeyServerSetWithMigration is Owned, KeyServerSetWithMigration {
     // Is migration confirmed.
     function isMigrationConfirmed(address keyServer) external view isMigrationParticipant(keyServer) returns (bool) {
         return migrationConfirmations[keyServer];
+    }
+
+    // Complete initialization. Before this function is called, all calls to addKeyServer/removeKeyServer
+    // affect both newSet and currentSet.
+    function completeInitialization() public only_owner {
+        require(!isInitialized);
+        isInitialized = true;
+    }
+
+    // Add new key server to set.
+    function addKeyServer(bytes keyServerPublic, string keyServerIp) public only_owner isValidPublic(keyServerPublic) isNotOnNewSet(computeAddress(keyServerPublic)) {
+        // append to the new set
+        address keyServer = appendToSet(newSet, keyServerPublic, keyServerIp);
+        // also append to current set
+        if (!isInitialized) {
+            appendToSet(currentSet, keyServerPublic, keyServerIp);
+        }
+        // fire event
+        KeyServerAdded(keyServer);
+    }
+
+    // Remove key server from set.
+    function removeKeyServer(address keyServer) public only_owner isOnNewSet(keyServer) {
+        // remove element from the new set
+        removeFromSet(newSet, keyServer);
+        // also remove from the current set
+        if (!isInitialized) {
+            removeFromSet(currentSet, keyServer);
+        }
+        // fire event
+        KeyServerRemoved(keyServer);
     }
 
     // Compute address from public key.

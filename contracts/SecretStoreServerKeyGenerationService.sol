@@ -19,9 +19,9 @@ pragma solidity ^0.4.21;
 import "./interfaces/SecretStoreService.sol";
 import "./SecretStoreServiceBase.sol";
 
+
 /// Server Key generation service contract.
-contract SecretStoreServerKeyGenerationService is SecretStoreServiceBase,
-    ServerKeyGenerationServiceClientApi, ServerKeyGenerationServiceKeyServerApi {
+contract SecretStoreServerKeyGenerationService is SecretStoreServiceBase, ServerKeyGenerationServiceClientApi, ServerKeyGenerationServiceKeyServerApi {
     /// Server key generation request.
     struct ServerKeyGenerationRequest {
         address author;
@@ -42,28 +42,15 @@ contract SecretStoreServerKeyGenerationService is SecretStoreServiceBase,
         maxServerKeyGenerationRequests = 4;
     }
 
-    // === Administrative methods ===
-
-    /// Set server key generation fee.
-    function setServerKeyGenerationFee(uint256 newFee) public only_owner {
-        serverKeyGenerationFee = newFee;
-    }
-
-    /// Set server key generation requests limit.
-    function setMaxServerKeyGenerationRequests(uint256 newLimit) public only_owner {
-        maxServerKeyGenerationRequests = newLimit;
-    }
-
-    /// Delete server key generation request.
-    function deleteServerKeyGenerationRequest(bytes32 serverKeyId) public only_owner {
-        ServerKeyGenerationRequest storage request = serverKeyGenerationRequests[serverKeyId];
-        clearServerKeyGenerationRequest(serverKeyId, request);
-    }
-
     // === Interface methods ===
 
+    /// We do not support direct payments.
+    function() payable public { revert(); }
+
     /// Request new server key generation. Generated key will be published via ServerKeyGenerated event when available.
-    function generateServerKey(bytes32 serverKeyId, uint8 threshold) external payable whenFeePaid(serverKeyGenerationFee) {
+    function generateServerKey(bytes32 serverKeyId, uint8 threshold) external payable
+        whenFeePaid(serverKeyGenerationFee)
+    {
         // we can't process requests with invalid threshold
         require(threshold + 1 <= keyServersCount());
         // check maximum number of requests
@@ -91,8 +78,11 @@ contract SecretStoreServerKeyGenerationService is SecretStoreServiceBase,
         // insert response (we're waiting for responses from all authorities here)
         uint8 keyServerIndex = requireKeyServer(msg.sender);
         bytes32 response = keccak256(serverKeyPublic);
-        ResponseSupport responseSupport = insertResponse(request.responses, keyServerIndex,
-            keyServersCount() - 1, response);
+        ResponseSupport responseSupport = insertResponse(
+            request.responses,
+            keyServerIndex,
+            keyServersCount() - 1,
+            response);
 
         // ...and check if there are enough support
         if (responseSupport == ResponseSupport.Unconfirmed) { // not confirmed (yet)
@@ -148,6 +138,26 @@ contract SecretStoreServerKeyGenerationService is SecretStoreServiceBase,
         ServerKeyGenerationRequest storage request = serverKeyGenerationRequests[serverKeyId];
         return isResponseRequired(request.responses, keyServerIndex);
     }
+
+    // === Administrative methods ===
+
+    /// Set server key generation fee.
+    function setServerKeyGenerationFee(uint256 newFee) public only_owner {
+        serverKeyGenerationFee = newFee;
+    }
+
+    /// Set server key generation requests limit.
+    function setMaxServerKeyGenerationRequests(uint256 newLimit) public only_owner {
+        maxServerKeyGenerationRequests = newLimit;
+    }
+
+    /// Delete server key generation request.
+    function deleteServerKeyGenerationRequest(bytes32 serverKeyId) public only_owner {
+        ServerKeyGenerationRequest storage request = serverKeyGenerationRequests[serverKeyId];
+        clearServerKeyGenerationRequest(serverKeyId, request);
+    }
+
+    // === Internal methods ===
 
     /// Clear server key generation request traces.
     function clearServerKeyGenerationRequest(bytes32 serverKeyId, ServerKeyGenerationRequest storage request) private {

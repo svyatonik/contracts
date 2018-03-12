@@ -21,8 +21,7 @@ import "./SecretStoreServiceBase.sol";
 
 
 /// Document Key store service contract.
-contract SecretStoreDocumentKeyStoreService is SecretStoreServiceBase,
-    DocumentKeyStoreServiceClientApi, DocumentKeyStoreServiceKeyServerApi {
+contract SecretStoreDocumentKeyStoreService is SecretStoreServiceBase, DocumentKeyStoreServiceClientApi, DocumentKeyStoreServiceKeyServerApi {
     /// Document key store request.
     struct DocumentKeyStoreRequest {
         address author;
@@ -44,25 +43,10 @@ contract SecretStoreDocumentKeyStoreService is SecretStoreServiceBase,
         maxDocumentKeyStoreRequests = 8;
     }
 
-    // === Administrative methods ===
-
-    /// Set document key store fee.
-    function setDocumentKeyStoreFee(uint256 newFee) public only_owner {
-        documentKeyStoreFee = newFee;
-    }
-
-    /// Set document key store requests limit.
-    function setMaxDocumentKeyStoreRequests(uint256 newLimit) public only_owner {
-        maxDocumentKeyStoreRequests = newLimit;
-    }
-
-    /// Delete document key store request.
-    function deleteDocumentKeyStoreRequest(bytes32 serverKeyId) public only_owner {
-        DocumentKeyStoreRequest storage request = documentKeyStoreRequests[serverKeyId];
-        clearDocumentKeyStoreRequest(serverKeyId, request);
-    }
-
     // === Interface methods ===
+
+    /// We do not support direct payments.
+    function() payable public { revert(); }
 
     /// Request document key store. Use `secretstore_generateDocumentKey` RPC to generate both
     /// `commonPoint` and `encryptedPoint`.
@@ -97,8 +81,11 @@ contract SecretStoreDocumentKeyStoreService is SecretStoreServiceBase,
         // insert response (we're waiting for responses from all authorities here)
         uint8 keyServerIndex = requireKeyServer(msg.sender);
         bytes32 response = bytes32(0);
-        ResponseSupport responseSupport = insertResponse(request.responses, keyServerIndex,
-            keyServersCount() - 1, response);
+        ResponseSupport responseSupport = insertResponse(
+            request.responses,
+            keyServerIndex,
+            keyServersCount() - 1,
+            response);
 
         // ...and check if there are enough support
         if (responseSupport == ResponseSupport.Unconfirmed) { // not confirmed (yet)
@@ -155,6 +142,26 @@ contract SecretStoreDocumentKeyStoreService is SecretStoreServiceBase,
         DocumentKeyStoreRequest storage request = documentKeyStoreRequests[serverKeyId];
         return isResponseRequired(request.responses, keyServerIndex);
     }
+
+    // === Administrative methods ===
+
+    /// Set document key store fee.
+    function setDocumentKeyStoreFee(uint256 newFee) public only_owner {
+        documentKeyStoreFee = newFee;
+    }
+
+    /// Set document key store requests limit.
+    function setMaxDocumentKeyStoreRequests(uint256 newLimit) public only_owner {
+        maxDocumentKeyStoreRequests = newLimit;
+    }
+
+    /// Delete document key store request.
+    function deleteDocumentKeyStoreRequest(bytes32 serverKeyId) public only_owner {
+        DocumentKeyStoreRequest storage request = documentKeyStoreRequests[serverKeyId];
+        clearDocumentKeyStoreRequest(serverKeyId, request);
+    }
+
+    // === Internal methods ===
 
     /// Clear document key store request traces.
     function clearDocumentKeyStoreRequest(bytes32 serverKeyId, DocumentKeyStoreRequest storage request) private {
