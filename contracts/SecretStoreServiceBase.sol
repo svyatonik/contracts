@@ -73,6 +73,14 @@ contract SecretStoreServiceBase is Owned {
         return KeyServerSet(keyServerSetAddress).getCurrentKeyServerIndex(keyServer);
     }
 
+    /// Drain balance of sender key server.
+    function drain() public {
+        var balance = balances[msg.sender];
+        require(balance != 0);
+        balances[msg.sender] = 0;
+        msg.sender.transfer(balance);
+    }
+
     /// Deposit equal share of amount to each of key servers.
     function deposit() internal {
         uint8 count = keyServersCount();
