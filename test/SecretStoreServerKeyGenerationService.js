@@ -285,6 +285,51 @@ contract('ServerKeyGenerationService', function(accounts) {
       .then(isResponseRequired => assert.equal(isResponseRequired, true))
     );
 
+    it("should reset existing responses when servers set changes", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      // request is created and single key server responds
+      .then(() => serviceContract.generateServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        1, { value: web3.toWei(200, 'finney') }))
+      .then(() => serviceContract.serverKeyGenerated("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002",
+        { from: server1.address }))
+      .then(() => serviceContract.isServerKeyGenerationResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
+        server1.address))
+      .then(isResponseRequired => assert.equal(isResponseRequired, false))
+      // then we're starting && completing the migration
+      .then(() => setContract.completeInitialization())
+      .then(() => setContract.addKeyServer(server3.public, server3.ip))
+      .then(() => setContract.startMigration("0x0000000000000000000000000000000000000000000000000000000000000001", {from: server1.address}))
+      .then(() => setContract.confirmMigration("0x0000000000000000000000000000000000000000000000000000000000000001", {from: server1.address}))
+      .then(() => setContract.confirmMigration("0x0000000000000000000000000000000000000000000000000000000000000001", {from: server2.address}))
+      .then(() => setContract.confirmMigration("0x0000000000000000000000000000000000000000000000000000000000000001", {from: server3.address}))
+      // let's check that response is now required key server 1
+      .then(() => serviceContract.isServerKeyGenerationResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
+        server1.address))
+      .then(isResponseRequired => assert.equal(isResponseRequired, true))
+      // now we're receiving response from KS2 && KS3 and still response from KS1 is required
+      .then(() => serviceContract.serverKeyGenerated("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002",
+        { from: server2.address }))
+      .then(() => serviceContract.serverKeyGenerated("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002",
+        { from: server3.address }))
+      .then(() => serviceContract.isServerKeyGenerationResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
+        server1.address))
+      .then(isResponseRequired => assert.equal(isResponseRequired, true))
+      // now we're receiving response from KS1 and key generated event is fired
+      .then(() => serviceContract.serverKeyGenerated("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002",
+        { from: server1.address }))
+      .then(receipt => assert.web3Event(receipt, {
+          event: 'ServerKeyGenerated',
+          args: {
+            serverKeyId: "0x0000000000000000000000000000000000000000000000000000000000000001",
+            serverKeyPublic: "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002",
+          }
+        }, 'Event is emitted'))
+    );
+
     // Administrative API tests
 
     it("should be able to change fee", () => Promise
