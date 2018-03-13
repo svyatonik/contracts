@@ -236,7 +236,7 @@ contract('ServerKeyRetrievalService', function(accounts) {
       // 1) KS1 responds with (P1, 1). 1-threshold support is 1
       // 2) KS2 responds with (P1, 1). 1-threshold support is 2. (P1, 1) support is 2, enough for 1-threshold
       // 3) KS3 responds with (P2, 1). 1-threshold support is 3 => threshold is 1. P1 already has enough support && we publish it
-      //  even though KS3 has responded with P2 && at the end P2 could end having enough confirmations
+      //  even though KS3 has responded with P2 && at the end P2 could end having more confirmations than P1
       .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
         "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
         { from: server1.address }))
@@ -348,6 +348,263 @@ contract('ServerKeyRetrievalService', function(accounts) {
       }, 'Event is emitted'))
     );
 
+    it("should ignore response if no active request", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
+        { from: server1.address }))
+    );
+
+    it("should fail if response is reported by non key-server", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
+        { from: nonKeyServer }))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should ignore error if no active request", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.serverKeyRetrievalError("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: server1.address }))
+    );
+
+    it("should fail if error is reported by non key-server", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.serverKeyRetrievalError("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: nonKeyServer }))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should raise an error if 50%+1 servers have reported an error", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.serverKeyRetrievalError("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: server1.address }))
+      .then(receipt => assert.equal(receipt.logs.length, 0))
+      .then(() => serviceContract.serverKeyRetrievalError("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: server2.address }))
+      .then(receipt => assert.equal(receipt.logs.length, 0))
+      .then(() => serviceContract.serverKeyRetrievalError("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: server3.address }))
+      .then(receipt => assert.web3Event(receipt, {
+          event: 'ServerKeyRetrievalError',
+          args: {
+            serverKeyId: "0x0000000000000000000000000000000000000000000000000000000000000001"
+          }
+        }, 'Event is emitted'))
+    );
+
+    it("should publish retrieved server key even though some key servers has responded with an error", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
+        { from: server1.address }))
+      .then(receipt => assert.equal(receipt.logs.length, 0))
+      .then(() => serviceContract.serverKeyRetrievalError("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: server2.address }))
+      .then(receipt => assert.equal(receipt.logs.length, 0))
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
+        { from: server3.address }))
+      .then(receipt => assert.equal(receipt.logs.length, 0))
+      .then(() => serviceContract.serverKeyRetrievalError("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: server4.address }))
+      .then(receipt => assert.equal(receipt.logs.length, 0))
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000003", 1,
+        { from: server5.address }))
+      .then(receipt => assert.web3Event(receipt, {
+          event: 'ServerKeyRetrieved',
+          args: {
+            serverKeyId: "0x0000000000000000000000000000000000000000000000000000000000000001",
+            serverKeyPublic: "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002",
+          }
+        }, 'Event is emitted'))
+    );
+
+    it("should raise an error even though some servers have responded", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 4,
+        { from: server1.address }))
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 4,
+        { from: server2.address }))
+      .then(receipt => assert.equal(receipt.logs.length, 0))
+      .then(() => serviceContract.serverKeyRetrievalError("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: server3.address }))
+      .then(receipt => assert.equal(receipt.logs.length, 0))
+      // possible optimization:
+      // at this moment we already have (4-threshold support of 2) and (256-threshold support of 1)
+      // => even though the rest of KS will resppnd with 4-threshold, we won't be able to agree upon public because 1 node has failed to agree
+      .then(() => serviceContract.serverKeyRetrievalError("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: server4.address }))
+      .then(receipt => assert.equal(receipt.logs.length, 0))
+      .then(() => serviceContract.serverKeyRetrievalError("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: server5.address }))
+      .then(receipt => assert.web3Event(receipt, {
+          event: 'ServerKeyRetrievalError',
+          args: {
+            serverKeyId: "0x0000000000000000000000000000000000000000000000000000000000000001"
+          }
+        }, 'Event is emitted'))
+    );
+
+    it("should return pending requests", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.serverKeyRetrievalRequestsCount())
+      .then(c => assert.equal(c, 0))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: server1.address, value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000002",
+        { from: server2.address, value: web3.toWei(200, 'finney') }))
+      .then(() => serviceContract.serverKeyRetrievalRequestsCount())
+      .then(c => assert.equal(c, 2))
+      .then(() => serviceContract.getServerKeyRetrievalRequest(0))
+      .then(request => assert.equal(request, "0x0000000000000000000000000000000000000000000000000000000000000001"))
+      .then(() => serviceContract.getServerKeyRetrievalRequest(1))
+      .then(request => assert.equal(request, "0x0000000000000000000000000000000000000000000000000000000000000002"))
+    );
+
+    it("should return if response is required", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.isServerKeyRetrievalResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
+        server1.address))
+      .then(isResponseRequired => assert.equal(isResponseRequired, true))
+      .then(() => serviceContract.isServerKeyRetrievalResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
+        server2.address))
+      .then(isResponseRequired => assert.equal(isResponseRequired, true))
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
+        { from: server1.address }))
+      .then(() => serviceContract.isServerKeyRetrievalResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
+        server1.address))
+      .then(isResponseRequired => assert.equal(isResponseRequired, false))
+      .then(() => serviceContract.isServerKeyRetrievalResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
+        server2.address))
+      .then(isResponseRequired => assert.equal(isResponseRequired, true))
+    );
+
+    it("should reset existing responses when servers set changes", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      // request is created and single key server responds
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
+        { from: server1.address }))
+      .then(() => serviceContract.isServerKeyRetrievalResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
+        server1.address))
+      .then(isResponseRequired => assert.equal(isResponseRequired, false))
+      // then we're starting && completing the migration
+      .then(() => setContract.completeInitialization())
+      .then(() => setContract.removeKeyServer(server3.address))
+      .then(() => setContract.startMigration("0x0000000000000000000000000000000000000000000000000000000000000001", {from: server1.address}))
+      .then(() => setContract.confirmMigration("0x0000000000000000000000000000000000000000000000000000000000000001", {from: server1.address}))
+      .then(() => setContract.confirmMigration("0x0000000000000000000000000000000000000000000000000000000000000001", {from: server2.address}))
+      .then(() => setContract.confirmMigration("0x0000000000000000000000000000000000000000000000000000000000000001", {from: server4.address}))
+      .then(() => setContract.confirmMigration("0x0000000000000000000000000000000000000000000000000000000000000001", {from: server5.address}))
+      // let's check that response is now required key server 1
+      .then(() => serviceContract.isServerKeyRetrievalResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
+        server1.address))
+      .then(isResponseRequired => assert.equal(isResponseRequired, true))
+      // now we're receiving response from KS2 && KS4 and still response from KS1 is required
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
+        { from: server2.address }))
+      .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
+        { from: server4.address }))
+      .then(() => serviceContract.isServerKeyRetrievalResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
+        server1.address))
+      .then(isResponseRequired => assert.equal(isResponseRequired, true))
+    // now we're receiving response from KS1 and key generated event is fired
+    .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+      "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
+      { from: server1.address }))
+    .then(receipt => assert.web3Event(receipt, {
+        event: 'ServerKeyRetrieved',
+        args: {
+          serverKeyId: "0x0000000000000000000000000000000000000000000000000000000000000001",
+          serverKeyPublic: "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002",
+        }
+      }, 'Event is emitted'))
+    );
+
     // Administrative API tests
+
+    it("should be able to change fee", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.setServerKeyRetrievalFee(10))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(10, 'finney') }))
+    );
+
+    it("should not be able to change fee by a non-owner", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.setServerKeyRetrievalFee(10, { from: nonKeyServer }))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should be able to change requests limit", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.setMaxServerKeyRetrievalRequests(9))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000002",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000003",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000004",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000005",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000006",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000007",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000008",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000009",
+        { value: web3.toWei(100, 'finney') }))
+    );
+
+    it("should not be able to change requests limit by a non-owner", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.setMaxServerKeyRetrievalRequests(5, { from: nonKeyServer }))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should be able to delete request", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.serverKeyRetrievalRequestsCount())
+      .then(c => assert.equal(c, 1))
+      .then(() => serviceContract.deleteServerKeyRetrievalRequest("0x0000000000000000000000000000000000000000000000000000000000000001"))
+      .then(() => serviceContract.serverKeyRetrievalRequestsCount())
+      .then(c => assert.equal(c, 0))
+    );
+
+    it("should not be able to delete request by a non-owner", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.deleteServerKeyRetrievalRequest("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { from: nonKeyServer }))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
   });
 });

@@ -137,15 +137,15 @@ contract SecretStoreServiceBase is Owned {
             return ResponseSupport.Unconfirmed;
         }
         responses.maxResponseSupport = responseSupport;
-  
+
         // check if passed response has received enough support
-        if (threshold + 1 <= responseSupport) {
+        if (threshold <= responseSupport - 1) {
             return ResponseSupport.Confirmed;
         }
 
         // check if max confirmation CAN receive enough support
         uint8 keyServersLeft = keyServersCount() - responses.respondedKeyServersCount;
-        if (threshold + 1 > responses.maxResponseSupport + keyServersLeft) {
+        if (threshold > responses.maxResponseSupport + keyServersLeft - 1) {
             return ResponseSupport.Impossible;
         }
 

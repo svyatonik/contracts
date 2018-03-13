@@ -121,7 +121,7 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerK
             request,
             keyServerIndex,
             invalidPublic,
-            keyServersCount() / 2);
+            0xFF);
         if (responseSupport == ResponseSupport.Unconfirmed) {
             return;
         }
@@ -200,7 +200,7 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerK
         if (thresholdResponseSupport == ResponseSupport.Unconfirmed) {
             // even though threshold is not yet confirmed, we might want to remember public
             // to return it in future
-            if (request.responses.maxResponseSupport == request.responses.responsesSupport[response]) {
+            if (threshold != 0xFF && request.responses.maxResponseSupport == request.responses.responsesSupport[response]) {
                 request.publicWithMaxThreshold = serverKeyPublic;
             }
 
@@ -214,6 +214,7 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerK
                 return (ResponseSupport.Confirmed, request.publicWithMaxThreshold);
             }
         }
+
         return (responseSupport, serverKeyPublic);
     }
 
