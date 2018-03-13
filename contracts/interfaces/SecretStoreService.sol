@@ -16,7 +16,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-pragma solidity ^0.4.21;
+pragma solidity ^0.4.18;
 
 /// Server Key generation service contract API (client view).
 interface ServerKeyGenerationServiceClientApi {
