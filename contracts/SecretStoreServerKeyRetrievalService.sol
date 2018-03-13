@@ -27,6 +27,7 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerK
         bool isActive;
         RequestResponses thresholdResponses;
         RequestResponses responses;
+        bytes publicWithMaxThreshold;
     }
 
     /// When sever key retrieval request is received.
@@ -81,11 +82,10 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerK
         // insert response (we're waiting for responses from all authorities here)
         // it checks that tx.origin is actually the key server
         uint8 keyServerIndex = requireKeyServer(msg.sender);
-        bytes32 response = keccak256(serverKeyPublic);
-        ResponseSupport responseSupport = insertServerKeyRetrievalResponse(
+        var (responseSupport, finalServerKeyPublic) = insertServerKeyRetrievalResponse(
             request,
             keyServerIndex,
-            response,
+            serverKeyPublic,
             threshold);
 
         // ...and check if there are enough support
@@ -96,7 +96,7 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerK
         // delete request and fire event
         clearServerKeyRetrievalRequest(serverKeyId, request);
         if (responseSupport == ResponseSupport.Confirmed) { // confirmed
-            ServerKeyRetrieved(serverKeyId, serverKeyPublic);
+            ServerKeyRetrieved(serverKeyId, finalServerKeyPublic);
         } else { // no consensus possible at all
             ServerKeyRetrievalError(serverKeyId);
         }
@@ -116,11 +116,11 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerK
         // all key servers in SS with auto-migration enabled should have a share for every key
         // => we could make an error fatal, but let's tolerate such issues
         // => insert invalid response and check if there are enough confirmations
-        bytes32 invalidResponse = bytes32(0);
-        ResponseSupport responseSupport = insertServerKeyRetrievalResponse(
+        bytes memory invalidPublic = new bytes(64);
+        var (responseSupport, _) = insertServerKeyRetrievalResponse(
             request,
             keyServerIndex,
-            invalidResponse,
+            invalidPublic,
             keyServersCount() / 2);
         if (responseSupport == ResponseSupport.Unconfirmed) {
             return;
@@ -176,8 +176,8 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerK
     function insertServerKeyRetrievalResponse(
         ServerKeyRetrievalRequest storage request,
         uint8 keyServerIndex,
-        bytes32 response,
-        uint8 threshold) private returns (ResponseSupport)
+        bytes serverKeyPublic,
+        uint8 threshold) private returns (ResponseSupport, bytes)
     {
         // insert threshold response
         bytes32 thresholdResponse = bytes32(threshold);
@@ -187,20 +187,34 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerK
             keyServersCount() / 2,
             thresholdResponse);
         if (thresholdResponseSupport == ResponseSupport.Impossible) {
-            return thresholdResponseSupport;
+            return (thresholdResponseSupport, serverKeyPublic);
         }
 
         // insert response itself
-        bool checkThreshold = (thresholdResponseSupport == ResponseSupport.Confirmed);
+        bytes32 response = keccak256(serverKeyPublic, threshold);
         ResponseSupport responseSupport = insertResponse(
             request.responses,
             keyServerIndex,
             threshold,
             response);
-        if (!checkThreshold && responseSupport == ResponseSupport.Impossible) {
-            return ResponseSupport.Unconfirmed;
+        if (thresholdResponseSupport == ResponseSupport.Unconfirmed) {
+            // even though threshold is not yet confirmed, we might want to remember public
+            // to return it in future
+            if (request.responses.maxResponseSupport == request.responses.responsesSupport[response]) {
+                request.publicWithMaxThreshold = serverKeyPublic;
+            }
+
+            // if threshold we have responded with is not confirmed, public is also not confirmed
+            return (ResponseSupport.Unconfirmed, serverKeyPublic);
         }
-        return responseSupport;
+        if (responseSupport == ResponseSupport.Unconfirmed) {
+            // threshold is confirmed and response is unconfirmed
+            // => we might want to check if some other public has enough confirmations already
+            if (request.responses.maxResponseSupport >= threshold + 1) {
+                return (ResponseSupport.Confirmed, request.publicWithMaxThreshold);
+            }
+        }
+        return (responseSupport, serverKeyPublic);
     }
 
     /// Clear server key retrieval request traces.
