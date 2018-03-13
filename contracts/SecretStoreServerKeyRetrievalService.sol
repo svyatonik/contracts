@@ -117,7 +117,7 @@ contract SecretStoreServerKeyRetrievalService is SecretStoreServiceBase, ServerK
         // => we could make an error fatal, but let's tolerate such issues
         // => insert invalid response and check if there are enough confirmations
         bytes memory invalidPublic = new bytes(64);
-        var (responseSupport, _) = insertServerKeyRetrievalResponse(
+        var (responseSupport, ) = insertServerKeyRetrievalResponse(
             request,
             keyServerIndex,
             invalidPublic,
