@@ -22,13 +22,15 @@
     "babel-register": "^6.23.0",
     "bignumber.js": "^5.0.0",
     "bluebird": "^3.5.0",
+    "chai": "^4.1.2",
     "concurrently": "^3.5.1",
     "coveralls": "^3.0.0",
     "ethereumjs-util": "^5.1.2",
     "ganache-cli": "^6.0.3",
     "solidity-coverage": "^0.4.2",
     "solium": "^1.0.8",
-    "truffle": "^4.0.1"
+    "truffle": "^4.0.1",
+    "truffle-test-utils": "0.0.2"
   },
   "babel": {
     "presets": [
