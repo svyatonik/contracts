@@ -68,6 +68,21 @@ contract('ServerKeyRetrievalService', function(accounts) {
       .then(() => assert(false, "supposed to fail"), () => {})
     );
 
+    it("should not drain zero balance", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.drain())
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should drain the balance of key server", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.drain({ from: server2.address }))
+      .then(() => web3.eth.getBalance(server2.address))
+      .then(b => assert(b.toNumber() > 100000000000000000000))
+    );
+
     // ServerKeyRetrievalServiceClientApi tests
 
     it("should accept server key retriveal request", () => Promise

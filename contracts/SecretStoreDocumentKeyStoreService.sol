@@ -93,12 +93,9 @@ contract SecretStoreDocumentKeyStoreService is SecretStoreServiceBase, DocumentK
         }
 
         // delete request and fire event
+        // there's always consensus, because key servers are only reporting the fact that they've stored the key
         clearDocumentKeyStoreRequest(serverKeyId, request);
-        if (responseSupport == ResponseSupport.Confirmed) { // confirmed
-            DocumentKeyStored(serverKeyId);
-        } else { // no consensus possible at all
-            DocumentKeyStoreError(serverKeyId);
-        }
+        DocumentKeyStored(serverKeyId);
     }
 
     /// Called when error occurs during document key store.
