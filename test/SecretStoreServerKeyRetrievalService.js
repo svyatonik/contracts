@@ -48,6 +48,12 @@ contract('ServerKeyRetrievalService', function(accounts) {
 
     // SecretStoreServiceBase tests
 
+    it("should reject direct payments", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.sendTransaction({ value: 100 }))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
     it("should return correct value from keyServersCount", () => Promise
       .resolve(initializeKeyServerSet(setContract))
       .then(() => serviceContract.keyServersCount())
@@ -137,7 +143,7 @@ contract('ServerKeyRetrievalService', function(accounts) {
       .resolve(initializeKeyServerSet(setContract))
       .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
         { value: web3.toWei(100, 'finney') }))
-      .then(() => serviceContract.generateServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
         { value: web3.toWei(100, 'finney') }))
       .then(() => assert(false, "supposed to fail"), () => {})
     );
@@ -545,7 +551,7 @@ contract('ServerKeyRetrievalService', function(accounts) {
       .then(() => serviceContract.isServerKeyRetrievalResponseRequired("0x0000000000000000000000000000000000000000000000000000000000000001",
         server1.address))
       .then(isResponseRequired => assert.equal(isResponseRequired, true))
-    // now we're receiving response from KS1 and key generated event is fired
+    // now we're receiving response from KS1 and key retrieval event is fired
     .then(() => serviceContract.serverKeyRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
       "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002", 1,
       { from: server1.address }))
@@ -606,11 +612,13 @@ contract('ServerKeyRetrievalService', function(accounts) {
       .resolve(initializeKeyServerSet(setContract))
       .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000001",
         { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.retrieveServerKey("0x0000000000000000000000000000000000000000000000000000000000000002",
+        { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.serverKeyRetrievalRequestsCount())
+      .then(c => assert.equal(c, 2))
+      .then(() => serviceContract.deleteServerKeyRetrievalRequest("0x0000000000000000000000000000000000000000000000000000000000000002"))
       .then(() => serviceContract.serverKeyRetrievalRequestsCount())
       .then(c => assert.equal(c, 1))
-      .then(() => serviceContract.deleteServerKeyRetrievalRequest("0x0000000000000000000000000000000000000000000000000000000000000001"))
-      .then(() => serviceContract.serverKeyRetrievalRequestsCount())
-      .then(c => assert.equal(c, 0))
     );
 
     it("should not be able to delete request by a non-owner", () => Promise

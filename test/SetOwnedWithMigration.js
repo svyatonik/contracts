@@ -63,6 +63,12 @@ contract('Set', function(accounts) {
       .then(_contract => setContract = _contract)
     );
 
+    it("should reject direct payments", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(c => c.sendTransaction({ value: 100 }))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
     it("should return public from current set", () => Promise
       .resolve(defaultInitialization(setContract))
       .then(c => c.getCurrentKeyServerPublic(server1.address))
@@ -413,6 +419,28 @@ contract('Set', function(accounts) {
       .then(() => setContract.startMigration(migrationId, {from: server1.address}))
       .then(() => setContract.confirmMigration(migrationId, {from: server1.address}))
       .then(() => setContract.confirmMigration(migrationId, {from: server1.address}))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should fail when trying to get unexisting key server", () => Promise
+      .resolve(defaultInitializationWithRealAccounts(setContract))
+      .then(() => setContract.getCurrentKeyServer(100))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
+    it("should fail when trying to add more than 256 servers", () => Promise
+      .resolve(defaultInitialization(setContract))
+      .then(() => {
+        // there are already 2 servers on the set => let's add more so there are 256 servers
+        var promises = [];
+        for (var i = 2; i < 256; ++i) {
+          var serverPublic = i.toString(16);
+          serverPublic = "0x" + "0".repeat(128 - serverPublic.length) + serverPublic;
+          promises.push(setContract.addKeyServer(serverPublic, "127.0.0.1:130" + i.toString()));
+        }
+        return Promise.all(promises);
+      })
+      .then(() => setContract.addKeyServer(server3.public, server3.ip))
       .then(() => assert(false, "supposed to fail"), () => {})
     );
   });

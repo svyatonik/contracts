@@ -59,7 +59,13 @@ contract('DocumentKeyShadowRetrievalService', function(accounts) {
       .then(_contract => serviceContract = _contract)
     );
   
-	// SecretStoreServiceBase tests
+  // SecretStoreServiceBase tests
+
+  it("should reject direct payments", () => Promise
+    .resolve(initializeKeyServerSet(setContract))
+    .then(() => serviceContract.sendTransaction({ value: 100 }))
+    .then(() => assert(false, "supposed to fail"), () => {})
+  );
 
   it("should return correct value from keyServersCount", () => Promise
     .resolve(initializeKeyServerSet(setContract))
@@ -121,7 +127,7 @@ contract('DocumentKeyShadowRetrievalService', function(accounts) {
   it("should reject document key shadow retrieval request with non-owned public", () => Promise
     .resolve(initializeKeyServerSet(setContract))
     .then(() => serviceContract.retrieveDocumentKeyShadow("0x0000000000000000000000000000000000000000000000000000000000000001",
-      requesterPublic1, { from: server1.address }))
+      requesterPublic1, { from: server1.address, value: web3.toWei(200, 'finney') }))
     .then(() => assert(false, "supposed to fail"), () => {})
   );
 
@@ -334,6 +340,22 @@ contract('DocumentKeyShadowRetrievalService', function(accounts) {
       requesterAddress1, commonPoint1, 1, { from: server3.address }))
     .then(() => serviceContract.documentKeyPersonalRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
       requesterAddress1, participants1, decryptedSecret1, shadow1, { from: nonKeyServer }))
+    .then(() => assert(false, "supposed to fail"), () => {})
+  );
+
+  it("should fail if personal data is reported by a wrong key server", () => Promise
+    .resolve(initializeKeyServerSet(setContract))
+    .then(() => serviceContract.retrieveDocumentKeyShadow("0x0000000000000000000000000000000000000000000000000000000000000001",
+      requesterPublic1, { from: requester1, value: web3.toWei(200, 'finney') }))
+    .then(() => serviceContract.documentKeyCommonRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+      requesterAddress1, commonPoint1, 1, { from: server1.address }))
+    .then(() => serviceContract.documentKeyCommonRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+      requesterAddress1, commonPoint1, 1, { from: server2.address }))
+    .then(() => serviceContract.documentKeyCommonRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+      requesterAddress1, commonPoint1, 1, { from: server3.address }))
+    .then(() => serviceContract.documentKeyPersonalRetrieved("0x0000000000000000000000000000000000000000000000000000000000000001",
+      requesterAddress1, "0x0000000000000000000000000000000000000000000000000000000000000002", decryptedSecret1, shadow1,
+      { from: server1.address }))
     .then(() => assert(false, "supposed to fail"), () => {})
   );
 
@@ -590,12 +612,14 @@ contract('DocumentKeyShadowRetrievalService', function(accounts) {
     .resolve(initializeKeyServerSet(setContract))
     .then(() => serviceContract.retrieveDocumentKeyShadow("0x0000000000000000000000000000000000000000000000000000000000000001",
       requesterPublic1, { from: requesterAddress1, value: web3.toWei(200, 'finney') }))
+    .then(() => serviceContract.retrieveDocumentKeyShadow("0x0000000000000000000000000000000000000000000000000000000000000002",
+      requesterPublic1, { from: requesterAddress1, value: web3.toWei(200, 'finney') }))
     .then(() => serviceContract.documentKeyShadowRetrievalRequestsCount())
-    .then(c => assert.equal(c, 1))
-    .then(() => serviceContract.deleteDocumentKeyShadowRetrievalRequest("0x0000000000000000000000000000000000000000000000000000000000000001",
+    .then(c => assert.equal(c, 2))
+    .then(() => serviceContract.deleteDocumentKeyShadowRetrievalRequest("0x0000000000000000000000000000000000000000000000000000000000000002",
       requesterAddress1))
     .then(() => serviceContract.documentKeyShadowRetrievalRequestsCount())
-    .then(c => assert.equal(c, 0))
+    .then(c => assert.equal(c, 1))
   );
 
   it("should not be able to delete request by a non-owner", () => Promise

@@ -41,6 +41,12 @@ contract('DocumentKeyStoreService', function(accounts) {
 
     // SecretStoreServiceBase tests
 
+    it("should reject direct payments", () => Promise
+      .resolve(initializeKeyServerSet(setContract))
+      .then(() => serviceContract.sendTransaction({ value: 100 }))
+      .then(() => assert(false, "supposed to fail"), () => {})
+    );
+
     it("should return correct value from keyServersCount", () => Promise
       .resolve(initializeKeyServerSet(setContract))
       .then(() => serviceContract.keyServersCount())
@@ -346,11 +352,13 @@ contract('DocumentKeyStoreService', function(accounts) {
       .resolve(initializeKeyServerSet(setContract))
       .then(() => serviceContract.storeDocumentKey("0x0000000000000000000000000000000000000000000000000000000000000001",
         commonPoint1, encryptedPoint1, { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.storeDocumentKey("0x0000000000000000000000000000000000000000000000000000000000000002",
+        commonPoint1, encryptedPoint1, { value: web3.toWei(100, 'finney') }))
+      .then(() => serviceContract.documentKeyStoreRequestsCount())
+      .then(c => assert.equal(c, 2))
+      .then(() => serviceContract.deleteDocumentKeyStoreRequest("0x0000000000000000000000000000000000000000000000000000000000000002"))
       .then(() => serviceContract.documentKeyStoreRequestsCount())
       .then(c => assert.equal(c, 1))
-      .then(() => serviceContract.deleteDocumentKeyStoreRequest("0x0000000000000000000000000000000000000000000000000000000000000001"))
-      .then(() => serviceContract.documentKeyStoreRequestsCount())
-      .then(c => assert.equal(c, 0))
     );
 
     it("should not be able to delete request by a non-owner", () => Promise
