@@ -164,6 +164,9 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
             return;
         }
 
+        // we do not accept personal data until common is retrieved
+        require(request.isCommonRetrievalCompleted);
+
         // there must be exactly threshold + 1 participated key servers
         // TODO: require(request.threshold + 1 == participants.length);
 
@@ -288,7 +291,7 @@ contract SecretStoreDocumentKeyShadowRetrievalService is SecretStoreServiceBase,
     // === Administrative methods ===
 
     /// Set document key shadow retrieval fee.
-    function setDocumentKeyShadowRetirevalFee(uint256 newFee) public only_owner {
+    function setDocumentKeyShadowRetrievalFee(uint256 newFee) public only_owner {
         documentKeyShadowRetrievalFee = newFee;
     }
 
